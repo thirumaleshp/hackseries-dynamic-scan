@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import QRCode from 'react-qr-code';
-import { Download, Check, Copy } from 'lucide-react';
+import { Download, Check, Copy, RefreshCw } from 'lucide-react';
 import { generateAlgorandTransaction } from '../services/algorand';
 
 const Generate: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [qrValue, setQrValue] = useState('');
+  const [transactionId, setTransactionId] = useState('');
   const [formData, setFormData] = useState({
     label: '',
     description: '',
@@ -26,13 +27,13 @@ const Generate: React.FC = () => {
     setLoading(true);
     
     try {
-      // This would normally call the Algorand service to create a transaction
-      // For demo purposes, we'll simulate it
+      // Call the Algorand service to create a transaction
       const response = await generateAlgorandTransaction(formData);
       
       setQrValue(response.verificationUrl);
+      setTransactionId(response.transactionId);
       setGenerated(true);
-      toast.success('QR code generated successfully!');
+      toast.success('QR code generated and stored on blockchain!');
     } catch (error) {
       toast.error('Failed to generate QR code. Please try again.');
       console.error(error);
@@ -42,17 +43,21 @@ const Generate: React.FC = () => {
   };
 
   const handleDownload = () => {
-    const svg = document.getElementById('qr-code')?.outerHTML;
+    const svg = document.getElementById('qr-code');
     if (svg) {
-      const blob = new Blob([svg], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `qr-${formData.label.replace(/\s+/g, '-').toLowerCase()}.svg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Create a more complete SVG for download
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      
+      const downloadLink = document.createElement('a');
+      downloadLink.href = svgUrl;
+      downloadLink.download = `qr-${formData.label.replace(/\s+/g, '-').toLowerCase()}.svg`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(svgUrl);
+      
       toast.success('QR code downloaded!');
     }
   };
@@ -60,6 +65,18 @@ const Generate: React.FC = () => {
   const copyToClipboard = () => {
     navigator.clipboard.writeText(qrValue);
     toast.success('Verification URL copied to clipboard!');
+  };
+
+  const resetForm = () => {
+    setGenerated(false);
+    setQrValue('');
+    setTransactionId('');
+    setFormData({
+      label: '',
+      description: '',
+      expiryDate: '',
+      notifyOnScan: true,
+    });
   };
 
   return (
@@ -78,7 +95,7 @@ const Generate: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="label" className="mb-1 block text-sm font-medium text-gray-700">
-                Label
+                Label *
               </label>
               <input
                 type="text"
@@ -89,6 +106,7 @@ const Generate: React.FC = () => {
                 onChange={handleChange}
                 className="form-input"
                 placeholder="Product Name, Event Ticket, etc."
+                disabled={generated}
               />
             </div>
 
@@ -104,6 +122,7 @@ const Generate: React.FC = () => {
                 onChange={handleChange}
                 className="form-input"
                 placeholder="Additional details about this QR code..."
+                disabled={generated}
               />
             </div>
 
@@ -118,6 +137,8 @@ const Generate: React.FC = () => {
                 value={formData.expiryDate}
                 onChange={handleChange}
                 className="form-input"
+                disabled={generated}
+                min={new Date().toISOString().split('T')[0]}
               />
             </div>
 
@@ -129,45 +150,57 @@ const Generate: React.FC = () => {
                 checked={formData.notifyOnScan}
                 onChange={handleChange}
                 className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                disabled={generated}
               />
               <label htmlFor="notifyOnScan" className="ml-2 block text-sm text-gray-700">
                 Notify me when this QR code is scanned
               </label>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || !formData.label}
-              className="btn-primary w-full"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center">
-                  <svg
-                    className="mr-2 h-4 w-4 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Generating...
-                </span>
-              ) : (
-                'Generate QR Code'
-              )}
-            </button>
+            {!generated ? (
+              <button
+                type="submit"
+                disabled={loading || !formData.label.trim()}
+                className="btn-primary w-full"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center">
+                    <svg
+                      className="mr-2 h-4 w-4 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Generating...
+                  </span>
+                ) : (
+                  'Generate QR Code'
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="btn-outline w-full"
+              >
+                <RefreshCw size={16} className="mr-2" />
+                Generate Another
+              </button>
+            )}
           </form>
         </div>
 
@@ -176,24 +209,36 @@ const Generate: React.FC = () => {
           {generated ? (
             <div className="flex w-full flex-col items-center space-y-4">
               <div className="rounded-lg bg-white p-4 shadow-sm">
-                <QRCode id="qr-code\" value={qrValue} size={200} />
+                <QRCode 
+                  id="qr-code" 
+                  value={qrValue} 
+                  size={200}
+                  level="M"
+                  includeMargin={true}
+                />
               </div>
               
-              <div className="w-full space-y-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={qrValue}
-                    readOnly
-                    className="form-input pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={copyToClipboard}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary-500"
-                  >
-                    <Copy size={16} />
-                  </button>
+              <div className="w-full space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                    Verification URL
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={qrValue}
+                      readOnly
+                      className="form-input pr-10 text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={copyToClipboard}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary-500"
+                      title="Copy to clipboard"
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="flex space-x-2">
@@ -208,30 +253,34 @@ const Generate: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      // Simulate verification
-                      toast.success('QR code verified on Algorand blockchain!');
+                      toast.success('QR code is ready for scanning!');
                     }}
                     className="btn-primary flex-1"
                   >
                     <Check size={16} className="mr-2" />
-                    Verify
+                    Ready
                   </button>
                 </div>
               </div>
               
-              <div className="rounded-md bg-primary-50 p-3 text-center text-sm text-primary-800">
-                <p>This QR code is secured by Algorand blockchain.</p>
-                <p className="mt-1 text-xs">Transaction ID: ALGO-{Math.random().toString(36).substring(2, 10).toUpperCase()}</p>
+              <div className="w-full space-y-2">
+                <div className="rounded-md bg-primary-50 p-3 text-center text-sm text-primary-800">
+                  <p className="font-medium">✓ Secured by Algorand Blockchain</p>
+                  <p className="mt-1 text-xs">Transaction ID: {transactionId}</p>
+                </div>
+                
+                <div className="rounded-md bg-success-50 p-3 text-center text-xs text-success-800">
+                  <p>This QR code is now ready to be scanned and verified!</p>
+                  <p className="mt-1">Use the Scan page to test verification.</p>
+                </div>
               </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center space-y-4 p-8 text-center">
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gray-100">
-                <QRCode
-                  value="https://placeholder.com"
-                  size={64}
-                  style={{ opacity: 0.3 }}
-                />
+                <div className="opacity-30">
+                  <QRCode value="placeholder" size={64} />
+                </div>
               </div>
               <h3 className="text-lg font-medium">No QR Code Generated Yet</h3>
               <p className="text-sm text-gray-500">

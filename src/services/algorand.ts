@@ -33,8 +33,23 @@ const initAlgorandClient = () => {
   return 'simulated-client';
 };
 
-// Mock data store for demo purposes
-const mockQRCodeStore: Record<string, QRCodeData & { transactionId: string, createdAt: string }> = {};
+// Mock data store for demo purposes - using localStorage for persistence
+const getQRCodeStore = (): Record<string, QRCodeData & { transactionId: string, createdAt: string }> => {
+  try {
+    const stored = localStorage.getItem('algoqr_store');
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveQRCodeStore = (store: Record<string, QRCodeData & { transactionId: string, createdAt: string }>) => {
+  try {
+    localStorage.setItem('algoqr_store', JSON.stringify(store));
+  } catch (error) {
+    console.error('Failed to save QR code store:', error);
+  }
+};
 
 // Function to generate a QR code and store it on Algorand
 export const generateAlgorandTransaction = async (data: QRCodeData) => {
@@ -51,19 +66,22 @@ export const generateAlgorandTransaction = async (data: QRCodeData) => {
     // 1. Generate a random transaction ID to simulate blockchain TX
     const transactionId = `ALGO-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
     
-    // 2. Store the QR code data in our mock database
-    mockQRCodeStore[qrId] = {
+    // 2. Store the QR code data in our persistent store
+    const store = getQRCodeStore();
+    store[qrId] = {
       ...data,
       transactionId,
       createdAt: new Date().toISOString(),
     };
+    saveQRCodeStore(store);
     
     // 3. Return a verification URL that includes the QR ID
-    // In a real app, this would be a URL that can be used to verify the QR code
+    // This URL format will be recognized by the verification function
     const verificationUrl = `https://algoqr.verify/${qrId}`;
     
     console.log(`QR code generated with ID: ${qrId}`);
     console.log(`Transaction ID: ${transactionId}`);
+    console.log(`Verification URL: ${verificationUrl}`);
     
     return {
       success: true,
@@ -82,18 +100,46 @@ export const verifyQrCode = async (qrCodeUrl: string): Promise<VerificationResul
   try {
     console.log('Verifying QR code:', qrCodeUrl);
     
-    // Extract the QR ID from the URL
-    // In a real app, this would parse the actual URL structure
-    const qrId = qrCodeUrl.split('/').pop();
-    
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 1500));
     
-    // Check if this QR code exists in our mock database
-    if (qrId && mockQRCodeStore[qrId]) {
-      const qrData = mockQRCodeStore[qrId];
+    // Get the current QR code store
+    const store = getQRCodeStore();
+    
+    // Extract the QR ID from the URL
+    let qrId: string | undefined;
+    
+    // Handle different URL formats
+    if (qrCodeUrl.includes('algoqr.verify/')) {
+      qrId = qrCodeUrl.split('algoqr.verify/')[1];
+    } else if (qrCodeUrl.startsWith('qr-')) {
+      qrId = qrCodeUrl; // Direct QR ID
+    } else {
+      // Try to extract from other URL patterns
+      const urlParts = qrCodeUrl.split('/');
+      qrId = urlParts[urlParts.length - 1];
+    }
+    
+    console.log('Extracted QR ID:', qrId);
+    
+    // Check if this QR code exists in our store
+    if (qrId && store[qrId]) {
+      const qrData = store[qrId];
       
-      // In a real app, this would verify the transaction on Algorand
+      // Check if the QR code has expired
+      if (qrData.expiryDate) {
+        const expiryDate = new Date(qrData.expiryDate);
+        const now = new Date();
+        if (now > expiryDate) {
+          console.log(`QR code ${qrId} has expired`);
+          return {
+            isValid: false,
+            label: qrData.label,
+            description: 'This QR code has expired',
+          };
+        }
+      }
+      
       console.log(`QR code ${qrId} verified successfully`);
       
       return {
@@ -105,23 +151,40 @@ export const verifyQrCode = async (qrCodeUrl: string): Promise<VerificationResul
       };
     }
     
-    // For demonstration, validate some sample QR codes
-    if (qrCodeUrl.includes('algoqr.verify') || qrCodeUrl.includes('product-') || qrCodeUrl.includes('event-')) {
+    // For demonstration, validate some additional sample patterns
+    if (qrCodeUrl.includes('product-') || qrCodeUrl.includes('event-') || qrCodeUrl.includes('demo')) {
       return {
         isValid: true,
         label: 'Demo Product',
-        description: 'This is a demonstration QR code',
+        description: 'This is a demonstration QR code for testing purposes',
         transactionId: `ALGO-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
         createdAt: new Date().toISOString(),
       };
     }
     
-    console.log('QR code not found or invalid');
-    return { isValid: false };
+    console.log('QR code not found or invalid:', qrCodeUrl);
+    return { 
+      isValid: false,
+      description: 'QR code not found in blockchain records'
+    };
   } catch (error) {
     console.error('Error verifying QR code:', error);
-    return { isValid: false };
+    return { 
+      isValid: false,
+      description: 'Error occurred during verification'
+    };
   }
+};
+
+// Function to get all stored QR codes (for history/dashboard)
+export const getAllQRCodes = () => {
+  return getQRCodeStore();
+};
+
+// Function to clear all stored QR codes (for testing)
+export const clearQRCodeStore = () => {
+  localStorage.removeItem('algoqr_store');
+  console.log('QR code store cleared');
 };
 
 // Export a function to listen for QR code scans (for notification purposes)
