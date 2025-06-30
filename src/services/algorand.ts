@@ -86,7 +86,7 @@ export const connectWallet = async (): Promise<string> => {
     // Fallback: Generate a demo account for testing if Pera Wallet fails
     console.log('Using demo account for testing...');
     const account = algosdk.generateAccount();
-    connectedAccount = account.addr;
+    connectedAccount = account.addr.toString();
     
     localStorage.setItem('algorand_account', connectedAccount);
     localStorage.setItem('demo_mode', 'true');
@@ -429,6 +429,17 @@ export const clearBlockchainData = () => {
 };
 
 // Initialize on import
-console.log('Algorand service initialized');
-console.log(`Network: ${ALGORAND_CONFIG.network}`);
-console.log(`Server: ${ALGORAND_CONFIG.server}`);
+const initializeAlgorandService = async () => {
+  try {
+    // Try to reconnect to existing session
+    await reconnectWallet();
+    console.log('Algorand service initialized');
+    console.log(`Network: ${ALGORAND_CONFIG.network}`);
+    console.log(`Server: ${ALGORAND_CONFIG.server}`);
+  } catch (error) {
+    console.log('Algorand service initialized without existing wallet connection');
+  }
+};
+
+// Initialize the service
+initializeAlgorandService();
