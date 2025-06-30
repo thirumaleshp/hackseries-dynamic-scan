@@ -122,185 +122,38 @@ export const isWalletConnected = (): boolean => {
   return getConnectedAccount() !== null;
 };
 
+// Reconnect to existing session
+export const reconnectWallet = async (): Promise<string | null> => {
+  try {
+    const accounts = await peraWallet.reconnectSession();
+    if (accounts.length > 0) {
+      connectedAccount = accounts[0];
+      localStorage.setItem('algorand_account', connectedAccount);
+      return connectedAccount;
+    }
+  } catch (error) {
+    console.log('No existing session to reconnect');
+  }
+  
+  // Check for existing account in localStorage
+  const storedAccount = localStorage.getItem('algorand_account');
+  if (storedAccount) {
+    connectedAccount = storedAccount;
+    return connectedAccount;
+  }
+  
+  return null;
+};
+
 // Get account balance
 export const getAccountBalance = async (address: string): Promise<number> => {
   try {
     const accountInfo = await algodClient.accountInformation(address).do();
-    return accountInfo.amount / 1000000; // Convert microAlgos to Algos
+    return Number(accountInfo.amount) / 1000000; // Convert microAlgos to Algos
   } catch (error) {
     console.error('Failed to get account balance:', error);
     return 0;
   }
-};
-
-// Smart contract source code for QR verification
-const getSmartContractSource = () => {
-  return `
-#pragma version 8
-
-// QR Code Verification Smart Contract
-// This contract stores QR code metadata and handles verification
-
-// Global state schema:
-// - qr_count: number of QR codes created
-// - creator: address of contract creator
-
-// Local state schema (per QR code):
-// - label: QR code label
-// - description: QR code description  
-// - created_at: timestamp when created
-// - expiry_date: expiry timestamp (0 if no expiry)
-// - is_active: whether QR code is active
-
-txn ApplicationID
-int 0
-==
-bnz handle_creation
-
-txn OnCompletion
-int OptIn
-==
-bnz handle_optin
-
-txn OnCompletion
-int NoOp
-==
-bnz handle_noop
-
-// Reject all other transaction types
-int 0
-return
-
-handle_creation:
-    // Initialize global state
-    byte "qr_count"
-    int 0
-    app_global_put
-    
-    byte "creator"
-    txn Sender
-    app_global_put
-    
-    int 1
-    return
-
-handle_optin:
-    // Allow any account to opt in
-    int 1
-    return
-
-handle_noop:
-    // Handle application calls
-    txn ApplicationArgs 0
-    byte "create_qr"
-    ==
-    bnz create_qr_code
-    
-    txn ApplicationArgs 0
-    byte "verify_qr"
-    ==
-    bnz verify_qr_code
-    
-    int 0
-    return
-
-create_qr_code:
-    // Create a new QR code entry
-    // Args: label, description, expiry_date
-    
-    // Increment QR count
-    byte "qr_count"
-    byte "qr_count"
-    app_global_get
-    int 1
-    +
-    app_global_put
-    
-    // Store QR data in local state
-    byte "label"
-    txn ApplicationArgs 1
-    app_local_put
-    
-    byte "description"
-    txn ApplicationArgs 2
-    app_local_put
-    
-    byte "created_at"
-    global LatestTimestamp
-    app_local_put
-    
-    byte "expiry_date"
-    txn ApplicationArgs 3
-    btoi
-    app_local_put
-    
-    byte "is_active"
-    int 1
-    app_local_put
-    
-    int 1
-    return
-
-verify_qr_code:
-    // Verify a QR code exists and is valid
-    // Args: account_to_verify
-    
-    txn ApplicationArgs 1
-    len
-    int 32
-    ==
-    assert // Ensure valid address length
-    
-    // Check if account has opted in and has active QR
-    txn ApplicationArgs 1
-    byte "is_active"
-    app_local_get_ex
-    store 1 // exists flag
-    store 0 // value
-    
-    load 1
-    int 1
-    ==
-    load 0
-    int 1
-    ==
-    &&
-    bnz qr_is_valid
-    
-    int 0
-    return
-
-qr_is_valid:
-    // Check expiry if set
-    txn ApplicationArgs 1
-    byte "expiry_date"
-    app_local_get_ex
-    store 3 // exists flag
-    store 2 // expiry value
-    
-    load 3
-    int 1
-    ==
-    bnz check_expiry
-    
-    int 1
-    return
-
-check_expiry:
-    load 2
-    int 0
-    ==
-    bnz no_expiry // No expiry set
-    
-    global LatestTimestamp
-    load 2
-    <
-    return
-
-no_expiry:
-    int 1
-    return
-`;
 };
 
 // Deploy smart contract (for initial setup)
@@ -309,8 +162,6 @@ export const deploySmartContract = async (): Promise<number> => {
     if (!isWalletConnected()) {
       throw new Error('Wallet not connected');
     }
-    
-    const account = getConnectedAccount()!;
     
     // For demo purposes, we'll simulate contract deployment
     // In a real app, you would compile and deploy the actual contract
@@ -372,11 +223,18 @@ export const generateAlgorandTransaction = async (data: QRCodeData) => {
     
     // Create application call transaction
     const txn = algosdk.makeApplicationCallTxnFromObject({
-      from: account,
+      sender: account,
       appIndex: appId,
       onComplete: algosdk.OnApplicationComplete.OptInOC,
       appArgs: appArgs,
       suggestedParams: suggestedParams,
+    });
+    
+    // Log transaction details for debugging
+    console.log('Transaction created:', {
+      from: account,
+      appId: appId,
+      txnId: txn.txID()
     });
     
     // In a real implementation, this transaction would be signed by the wallet
@@ -522,9 +380,9 @@ export const getNetworkStatus = async () => {
     return {
       connected: true,
       network: ALGORAND_CONFIG.network,
-      lastRound: status['last-round'],
-      timeSinceLastRound: status['time-since-last-round'],
-      catchupTime: status['catchup-time'],
+      lastRound: status.lastRound,
+      timeSinceLastRound: status.timeSinceLastRound,
+      catchupTime: status.catchupTime,
     };
   } catch (error) {
     console.error('Failed to get network status:', error);
