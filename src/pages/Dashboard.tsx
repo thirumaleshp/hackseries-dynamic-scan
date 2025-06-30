@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { QrCode, ScanLine, AlertCircle, CheckCircle, Clock, ArrowRight, Blockchain, Wallet } from 'lucide-react';
+import { QrCode, ScanLine, AlertCircle, CheckCircle, Clock, ArrowRight, Blocks as Blockchain, Wallet } from 'lucide-react';
 import { isWalletConnected, getConnectedAccount, getNetworkStatus, getAllQRCodes } from '../services/algorand';
 import WalletConnection from '../components/WalletConnection';
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { X, LayoutDashboard, QrCode, ScanLine, Clock, Blockchain } from 'lucide-react';
+import { X, LayoutDashboard, QrCode, ScanLine, Clock, Blocks as Blockchain } from 'lucide-react';
 import { isWalletConnected, getConnectedAccount } from '../services/algorand';
 
 interface SidebarProps {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { ScanLine, X, CheckCircle, AlertCircle, RotateCw, Upload, Blockchain } from 'lucide-react';
+import { ScanLine, X, CheckCircle, AlertCircle, RotateCw, Upload, Blocks as Blockchain } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import jsQR from 'jsqr';
 import { verifyQrCode } from '../services/algorand';
