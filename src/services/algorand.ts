@@ -528,10 +528,11 @@ export const getNetworkStatus = async () => {
     };
   } catch (error) {
     console.error('Failed to get network status:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return {
       connected: false,
       network: ALGORAND_CONFIG.network,
-      error: error.message,
+      error: errorMessage,
     };
   }
 };
