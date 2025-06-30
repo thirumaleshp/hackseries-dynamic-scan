@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { X, LayoutDashboard, QrCode, ScanLine, Clock } from 'lucide-react';
+import { X, LayoutDashboard, QrCode, ScanLine, Clock, Blockchain } from 'lucide-react';
+import { isWalletConnected, getConnectedAccount } from '../services/algorand';
 
 interface SidebarProps {
   open: boolean;
@@ -14,6 +15,9 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
     { name: 'Scan QR', path: '/scan', icon: <ScanLine size={20} /> },
     { name: 'History', path: '/history', icon: <Clock size={20} /> },
   ];
+
+  const connected = isWalletConnected();
+  const account = getConnectedAccount();
 
   return (
     <>
@@ -34,11 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">
           <div className="flex items-center space-x-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-500 text-white">
-              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
-                <path d="M3 9h18v10a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path d="M3 9l2.45-4.9A2 2 0 017.24 3h9.52a2 2 0 011.8 1.1L21 9" />
-                <path d="M12 3v6" />
-              </svg>
+              <Blockchain size={20} />
             </div>
             <span className="text-xl font-bold text-gray-900">AlgoQR</span>
           </div>
@@ -73,13 +73,28 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose }) => {
             </NavLink>
           ))}
         </nav>
+        
         <div className="absolute bottom-0 w-full border-t border-gray-200 p-4">
-          <div className="rounded-md bg-primary-50 p-3">
-            <h4 className="font-medium text-primary-800">Connected to Algorand</h4>
-            <p className="mt-1 text-xs text-primary-600">TestNet Network</p>
+          <div className={`rounded-md p-3 ${connected ? 'bg-primary-50' : 'bg-warning-50'}`}>
+            <div className="flex items-center">
+              <Blockchain className={`mr-2 h-4 w-4 ${connected ? 'text-primary-500' : 'text-warning-500'}`} />
+              <h4 className={`font-medium ${connected ? 'text-primary-800' : 'text-warning-800'}`}>
+                {connected ? 'Blockchain Connected' : 'Wallet Required'}
+              </h4>
+            </div>
+            <p className={`mt-1 text-xs ${connected ? 'text-primary-600' : 'text-warning-600'}`}>
+              {connected ? 'Algorand TestNet' : 'Connect wallet to use blockchain features'}
+            </p>
+            {connected && account && (
+              <p className="mt-1 text-xs text-primary-600 font-mono">
+                {account.substring(0, 8)}...{account.substring(account.length - 4)}
+              </p>
+            )}
             <div className="mt-2 flex items-center text-xs">
-              <div className="mr-2 h-2 w-2 rounded-full bg-success-500"></div>
-              <span className="text-success-500">Active</span>
+              <div className={`mr-2 h-2 w-2 rounded-full ${connected ? 'bg-success-500' : 'bg-warning-500'}`}></div>
+              <span className={connected ? 'text-success-500' : 'text-warning-500'}>
+                {connected ? 'Active' : 'Inactive'}
+              </span>
             </div>
           </div>
         </div>

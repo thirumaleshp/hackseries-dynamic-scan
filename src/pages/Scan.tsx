@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { ScanLine, X, CheckCircle, AlertCircle, RotateCw, Upload, Image as ImageIcon } from 'lucide-react';
+import { ScanLine, X, CheckCircle, AlertCircle, RotateCw, Upload, Blockchain } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import jsQR from 'jsqr';
 import { verifyQrCode } from '../services/algorand';
@@ -16,6 +16,8 @@ const Scan: React.FC = () => {
     description?: string;
     timestamp?: string;
     transactionId?: string;
+    blockNumber?: number;
+    expiryDate?: string;
   }>(null);
   
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
@@ -56,6 +58,7 @@ const Scan: React.FC = () => {
     setVerifying(true);
     
     try {
+      console.log('Verifying QR code on Algorand blockchain...');
       const result = await verifyQrCode(decodedText);
       
       setScanResult({
@@ -65,20 +68,23 @@ const Scan: React.FC = () => {
         description: result.description,
         timestamp: new Date().toLocaleString(),
         transactionId: result.transactionId,
+        blockNumber: result.blockNumber,
+        expiryDate: result.expiryDate,
       });
       
       if (result.isValid) {
-        toast.success('QR code verified successfully!');
+        toast.success('QR code verified successfully on Algorand blockchain!');
       } else {
-        toast.error('Invalid QR code!');
+        toast.error('Invalid or expired QR code!');
       }
     } catch (error) {
-      console.error('Verification error:', error);
-      toast.error('Failed to verify QR code');
+      console.error('Blockchain verification error:', error);
+      toast.error('Failed to verify QR code on blockchain');
       setScanResult({
         code: decodedText,
         isValid: false,
         timestamp: new Date().toLocaleString(),
+        description: 'Blockchain verification failed',
       });
     } finally {
       setVerifying(false);
@@ -186,7 +192,10 @@ const Scan: React.FC = () => {
         {/* Scanner Section */}
         <div className="card overflow-hidden">
           <div className="border-b border-gray-200 p-4">
-            <h2 className="text-lg font-medium">QR Code Scanner</h2>
+            <h2 className="text-lg font-medium flex items-center">
+              <Blockchain className="mr-2 h-5 w-5 text-primary-500" />
+              Blockchain QR Scanner
+            </h2>
           </div>
           
           <div className="p-6">
@@ -195,10 +204,15 @@ const Scan: React.FC = () => {
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-100">
                   <RotateCw className="h-8 w-8 animate-spin text-primary-500" />
                 </div>
-                <h3 className="text-lg font-medium">Verifying QR Code</h3>
+                <h3 className="text-lg font-medium">Verifying on Blockchain</h3>
                 <p className="mt-2 text-center text-sm text-gray-500">
-                  Checking authenticity on the Algorand blockchain...
+                  Checking authenticity on Algorand TestNet...
                 </p>
+                <div className="mt-4 rounded-md bg-primary-50 p-3 text-center text-xs text-primary-800">
+                  <p>🔗 Connecting to Algorand network</p>
+                  <p>📋 Querying smart contract</p>
+                  <p>✅ Validating transaction</p>
+                </div>
               </div>
             ) : scanning ? (
               <div className="relative rounded-lg bg-gray-100 p-4">
@@ -227,7 +241,7 @@ const Scan: React.FC = () => {
                   )}
                 </div>
                 <h3 className="text-lg font-medium">
-                  {scanResult.isValid ? 'Valid QR Code' : 'Invalid QR Code'}
+                  {scanResult.isValid ? 'Blockchain Verified ✓' : 'Verification Failed ✗'}
                 </h3>
                 
                 <div className="mt-6 w-full space-y-4">
@@ -246,15 +260,48 @@ const Scan: React.FC = () => {
                       )}
                       
                       <div>
-                        <label className="text-xs font-medium text-gray-500">Transaction ID</label>
-                        <p className="font-mono text-xs">{scanResult.transactionId}</p>
+                        <label className="text-xs font-medium text-gray-500">Blockchain Transaction</label>
+                        <p className="font-mono text-xs break-all">{scanResult.transactionId}</p>
                       </div>
+                      
+                      {scanResult.blockNumber && (
+                        <div>
+                          <label className="text-xs font-medium text-gray-500">Block Number</label>
+                          <p className="text-sm">{scanResult.blockNumber}</p>
+                        </div>
+                      )}
+                      
+                      {scanResult.expiryDate && (
+                        <div>
+                          <label className="text-xs font-medium text-gray-500">Expires</label>
+                          <p className="text-sm">{new Date(scanResult.expiryDate).toLocaleDateString()}</p>
+                        </div>
+                      )}
                     </>
+                  )}
+                  
+                  {!scanResult.isValid && scanResult.description && (
+                    <div>
+                      <label className="text-xs font-medium text-gray-500">Error</label>
+                      <p className="text-sm text-error-500">{scanResult.description}</p>
+                    </div>
                   )}
                   
                   <div>
                     <label className="text-xs font-medium text-gray-500">Scanned At</label>
                     <p className="text-sm">{scanResult.timestamp}</p>
+                  </div>
+                  
+                  <div className={`rounded-md p-3 text-center text-sm ${
+                    scanResult.isValid 
+                      ? 'bg-success-50 text-success-800' 
+                      : 'bg-error-50 text-error-800'
+                  }`}>
+                    {scanResult.isValid ? (
+                      <p>✅ This QR code is authentic and verified on Algorand blockchain</p>
+                    ) : (
+                      <p>❌ This QR code could not be verified on the blockchain</p>
+                    )}
                   </div>
                   
                   <button
@@ -325,7 +372,7 @@ const Scan: React.FC = () => {
         {/* Instructions Section */}
         <div className="card overflow-hidden">
           <div className="border-b border-gray-200 p-4">
-            <h2 className="text-lg font-medium">How It Works</h2>
+            <h2 className="text-lg font-medium">Blockchain Verification Process</h2>
           </div>
           <div className="divide-y divide-gray-200">
             <div className="flex p-4">
@@ -333,7 +380,7 @@ const Scan: React.FC = () => {
                 1
               </div>
               <div>
-                <h3 className="font-medium">Choose scan method</h3>
+                <h3 className="font-medium">Scan QR Code</h3>
                 <p className="text-sm text-gray-600">
                   Use your camera, upload an image, or drag and drop a QR code image.
                 </p>
@@ -345,9 +392,9 @@ const Scan: React.FC = () => {
                 2
               </div>
               <div>
-                <h3 className="font-medium">Scan the QR code</h3>
+                <h3 className="font-medium">Connect to Algorand</h3>
                 <p className="text-sm text-gray-600">
-                  Position the QR code within the scanner frame or select an image file.
+                  The system connects to Algorand TestNet to verify the QR code's authenticity.
                 </p>
               </div>
             </div>
@@ -357,9 +404,9 @@ const Scan: React.FC = () => {
                 3
               </div>
               <div>
-                <h3 className="font-medium">Verify on blockchain</h3>
+                <h3 className="font-medium">Query Smart Contract</h3>
                 <p className="text-sm text-gray-600">
-                  The system will automatically verify the code against the Algorand blockchain.
+                  The verification data is retrieved from the deployed smart contract on the blockchain.
                 </p>
               </div>
             </div>
@@ -369,9 +416,9 @@ const Scan: React.FC = () => {
                 4
               </div>
               <div>
-                <h3 className="font-medium">View verification result</h3>
+                <h3 className="font-medium">Display Results</h3>
                 <p className="text-sm text-gray-600">
-                  See if the QR code is valid and view its details.
+                  View the verification result with blockchain transaction details and metadata.
                 </p>
               </div>
             </div>
@@ -379,10 +426,10 @@ const Scan: React.FC = () => {
           
           <div className="bg-gray-50 p-4">
             <div className="rounded-md bg-primary-50 p-3 text-sm text-primary-800">
-              <h4 className="font-medium">Privacy Note</h4>
+              <h4 className="font-medium">🔒 Blockchain Security</h4>
               <p className="mt-1 text-xs">
-                All scanning happens locally on your device. The only data sent to the blockchain
-                is what's needed to verify the QR code's authenticity.
+                All QR codes are cryptographically secured and immutably stored on the Algorand blockchain.
+                This ensures tamper-proof verification and complete transparency.
               </p>
             </div>
           </div>

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
 import QRCode from 'react-qr-code';
-import { Download, Check, Copy, RefreshCw } from 'lucide-react';
-import { generateAlgorandTransaction } from '../services/algorand';
+import { Download, Check, Copy, RefreshCw, Wallet } from 'lucide-react';
+import { generateAlgorandTransaction, isWalletConnected } from '../services/algorand';
+import WalletConnection from '../components/WalletConnection';
 
 const Generate: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [qrValue, setQrValue] = useState('');
   const [transactionId, setTransactionId] = useState('');
+  const [blockNumber, setBlockNumber] = useState<number>(0);
+  const [appId, setAppId] = useState<number>(0);
   const [formData, setFormData] = useState({
     label: '',
     description: '',
@@ -24,18 +27,27 @@ const Generate: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!isWalletConnected()) {
+      toast.error('Please connect your Algorand wallet first');
+      return;
+    }
+    
     setLoading(true);
     
     try {
-      // Call the Algorand service to create a transaction
+      // Call the Algorand service to create a blockchain transaction
       const response = await generateAlgorandTransaction(formData);
       
       setQrValue(response.verificationUrl);
       setTransactionId(response.transactionId);
+      setBlockNumber(response.blockNumber);
+      setAppId(response.appId);
       setGenerated(true);
-      toast.success('QR code generated and stored on blockchain!');
+      
+      toast.success('QR code generated and stored on Algorand blockchain!');
     } catch (error) {
-      toast.error('Failed to generate QR code. Please try again.');
+      toast.error(`Failed to generate QR code: ${error.message}`);
       console.error(error);
     } finally {
       setLoading(false);
@@ -45,7 +57,6 @@ const Generate: React.FC = () => {
   const handleDownload = () => {
     const svg = document.getElementById('qr-code');
     if (svg) {
-      // Create a more complete SVG for download
       const svgData = new XMLSerializer().serializeToString(svg);
       const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
       const svgUrl = URL.createObjectURL(svgBlob);
@@ -71,6 +82,8 @@ const Generate: React.FC = () => {
     setGenerated(false);
     setQrValue('');
     setTransactionId('');
+    setBlockNumber(0);
+    setAppId(0);
     setFormData({
       label: '',
       description: '',
@@ -87,6 +100,9 @@ const Generate: React.FC = () => {
           Create a new QR code that will be verified on the Algorand blockchain.
         </p>
       </div>
+
+      {/* Wallet Connection Status */}
+      <WalletConnection />
 
       <div className="grid gap-8 md:grid-cols-2">
         {/* Form Section */}
@@ -160,7 +176,7 @@ const Generate: React.FC = () => {
             {!generated ? (
               <button
                 type="submit"
-                disabled={loading || !formData.label.trim()}
+                disabled={loading || !formData.label.trim() || !isWalletConnected()}
                 className="btn-primary w-full"
               >
                 {loading ? (
@@ -185,8 +201,13 @@ const Generate: React.FC = () => {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       ></path>
                     </svg>
-                    Generating...
+                    Creating on Blockchain...
                   </span>
+                ) : !isWalletConnected() ? (
+                  <>
+                    <Wallet size={16} className="mr-2" />
+                    Connect Wallet First
+                  </>
                 ) : (
                   'Generate QR Code'
                 )}
@@ -266,12 +287,13 @@ const Generate: React.FC = () => {
               <div className="w-full space-y-2">
                 <div className="rounded-md bg-primary-50 p-3 text-center text-sm text-primary-800">
                   <p className="font-medium">✓ Secured by Algorand Blockchain</p>
-                  <p className="mt-1 text-xs">Transaction ID: {transactionId}</p>
+                  <p className="mt-1 text-xs">Transaction: {transactionId}</p>
+                  <p className="text-xs">Block: {blockNumber} • App ID: {appId}</p>
                 </div>
                 
                 <div className="rounded-md bg-success-50 p-3 text-center text-xs text-success-800">
-                  <p>This QR code is now ready to be scanned and verified!</p>
-                  <p className="mt-1">Use the Scan page to test verification.</p>
+                  <p className="font-medium">Blockchain Verification Active</p>
+                  <p className="mt-1">This QR code is now immutably stored on Algorand TestNet and ready for verification.</p>
                 </div>
               </div>
             </div>
@@ -284,8 +306,10 @@ const Generate: React.FC = () => {
               </div>
               <h3 className="text-lg font-medium">No QR Code Generated Yet</h3>
               <p className="text-sm text-gray-500">
-                Fill out the form on the left and click "Generate QR Code" to create a new
-                blockchain-verified QR code.
+                {!isWalletConnected() 
+                  ? 'Connect your Algorand wallet and fill out the form to create a blockchain-verified QR code.'
+                  : 'Fill out the form on the left and click "Generate QR Code" to create a new blockchain-verified QR code.'
+                }
               </p>
             </div>
           )}
