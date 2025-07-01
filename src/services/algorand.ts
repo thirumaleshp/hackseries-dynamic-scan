@@ -596,7 +596,14 @@ int 1
 export const compileTealSource = async (source: string): Promise<Uint8Array> => {
   try {
     const compiledResult = await algodClient.compile(source).do();
-    return new Uint8Array(Buffer.from(compiledResult.result, 'base64'));
+    // Use browser-compatible base64 decoding
+    const base64String = compiledResult.result;
+    const binaryString = atob(base64String);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
   } catch (error) {
     console.error('Failed to compile TEAL:', error);
     throw new Error('Smart contract compilation failed');
@@ -1626,8 +1633,14 @@ const initializeAlgorandService = async () => {
     console.log(`Server: ${ALGORAND_CONFIG.server}`);
   } catch (error) {
     console.log('Algorand service initialized without existing wallet connection');
+    // Don't throw error during initialization to prevent app crash
   }
 };
 
-// Initialize the service
-initializeAlgorandService();
+// Initialize the service with error handling
+if (typeof window !== 'undefined') {
+  // Only initialize in browser environment
+  initializeAlgorandService().catch(error => {
+    console.log('Algorand service initialization completed with warnings:', error);
+  });
+}

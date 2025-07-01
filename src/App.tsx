@@ -1,31 +1,22 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Toaster } from 'sonner';
-
-// Pages
-import Dashboard from './pages/Dashboard';
-import Generate from './pages/Generate';
-import Scan from './pages/Scan';
-import History from './pages/History';
-import NotFound from './pages/NotFound';
-
-// Components
-import Layout from './components/Layout';
-
 function App() {
   return (
-    <Router>
-      <Toaster position="top-right" richColors />
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="generate" element={<Generate />} />
-          <Route path="scan" element={<Scan />} />
-          <Route path="history" element={<History />} />
-          <Route path="*" element={<NotFound />} />
-        </Route>
-      </Routes>
-    </Router>
+    <div style={{ padding: '20px', backgroundColor: 'white', minHeight: '100vh' }}>
+      <h1 style={{ color: 'black', fontSize: '24px', marginBottom: '20px' }}>
+        AlgoQR - Blockchain QR Verification
+      </h1>
+      <p style={{ color: 'black', fontSize: '16px' }}>
+        React is working! ✅
+      </p>
+      <div style={{ 
+        backgroundColor: '#f0f0f0', 
+        padding: '10px', 
+        border: '1px solid #ccc',
+        marginTop: '20px'
+      }}>
+        <p>If you can see this, the app is loading correctly.</p>
+        <p>Timestamp: {new Date().toLocaleString()}</p>
+      </div>
+    </div>
   );
 }
 
