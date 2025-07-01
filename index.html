@@ -8,47 +8,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      body {
-        margin: 0;
-        padding: 20px;
-        font-family: Inter, sans-serif;
-        background-color: #f9fafb;
-      }
-      .loading {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      }
-    </style>
   </head>
   <body>
-    <div id="root">
-      <div class="loading">
-        <h1>AlgoQR - Loading...</h1>
-        <p>React is starting up. If this message persists, check the console for errors.</p>
-        <p id="timestamp"></p>
-      </div>
-    </div>
-    <script>
-      // Show timestamp
-      document.getElementById('timestamp').textContent = 'Page loaded at: ' + new Date().toLocaleString();
-      
-      // Wait for React to load
-      setTimeout(() => {
-        const root = document.getElementById('root');
-        if (root && root.innerHTML.includes('Loading...')) {
-          root.innerHTML = `
-            <div class="loading" style="background: #fee2e2; border: 1px solid #ef4444;">
-              <h1 style="color: #dc2626;">React Failed to Load</h1>
-              <p>There was an error loading the React application. Check the browser console for details.</p>
-              <p>Page loaded at: ${new Date().toLocaleString()}</p>
-            </div>
-          `;
-        }
-      }, 3000);
-    </script>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
