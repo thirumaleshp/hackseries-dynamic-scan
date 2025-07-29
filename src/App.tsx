@@ -10,6 +10,13 @@ import './index.css'; // Import Tailwind CSS
 // Temporarily comment out the problematic import
 // import Generate from './pages/Generate';
 
+// Get the correct base URL for QR resolver
+const getResolverBaseUrl = () => {
+  // Always use production URL for QR codes, even in development
+  // This ensures QR codes work from any device
+  return 'https://hackseries-dynamic-scan.vercel.app';
+};
+
 // Dynamic QR Generator - Creates blockchain-powered dynamic QR codes
 function DynamicQRGenerator() {
   const [formData, setFormData] = React.useState({
@@ -77,7 +84,9 @@ function DynamicQRGenerator() {
       const eventId = formData.eventId || generateEventId();
       
       // Create static resolver URL (this never changes!)
-      const resolverUrl = `https://hackseries-dynamic-scan.vercel.app/resolve?event=${eventId}`;
+      // Always use production URL so QR codes work from any device
+      const resolverUrl = `${getResolverBaseUrl()}/resolve?event=${eventId}`;
+      console.log('Generated resolver URL:', resolverUrl);
       
       // Create event on Algorand blockchain
       const eventData: Omit<DynamicQREvent, 'createdAt' | 'owner' | 'scanCount' | 'active' | 'transactionId' | 'blockHeight'> = {
@@ -432,6 +441,9 @@ function DynamicQRGenerator() {
               <div>
                 <label className="text-sm font-medium text-gray-500">Static Resolver URL</label>
                 <p className="text-sm font-mono bg-blue-50 p-2 rounded text-blue-800 break-all">{qrValue}</p>
+                <p className="text-xs text-green-600 mt-1">
+                  ✅ This URL works from any device worldwide
+                </p>
               </div>
               
               <div>
@@ -882,7 +894,7 @@ function TestScan() {
         <div className="mt-6 p-4 bg-white rounded-lg border">
           <h3 className="font-semibold text-gray-700 mb-2">📋 Example Resolver URL</h3>
           <p className="text-sm font-mono bg-gray-100 p-2 rounded border break-all">
-            https://hackseries-dynamic-scan.vercel.app/resolve?event=ALGOHACK-2025-xyz123
+            {getResolverBaseUrl()}/resolve?event=ALGOHACK-2025-xyz123
           </p>
           <p className="text-xs text-gray-500 mt-2">
             This static URL is what gets encoded in the QR code. The destination it resolves to can be updated anytime via the blockchain.
