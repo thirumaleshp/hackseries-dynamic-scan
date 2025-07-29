@@ -5,6 +5,7 @@ import { dynaQRService, DynamicQREvent } from './services/algorand';
 import { dynaQRResolver, ResolverResponse } from './services/resolver';
 import QRCode from 'qrcode';
 import Resolver from './pages/Resolver';
+import DebugInfo from './components/DebugInfo';
 import './index.css'; // Import Tailwind CSS
 
 // Temporarily comment out the problematic import
@@ -1171,6 +1172,11 @@ function App() {
           expand
           closeButton
         />
+        
+        {/* Debug Info - only show in development or with debug flag */}
+        {(process.env.NODE_ENV === 'development' || window.location.search.includes('debug=true')) && (
+          <DebugInfo />
+        )}
       </div>
     </Router>
   );
