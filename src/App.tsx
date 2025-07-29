@@ -4,6 +4,7 @@ import { Toaster, toast } from 'sonner';
 import { dynaQRService, DynamicQREvent } from './services/algorand';
 import { dynaQRResolver, ResolverResponse } from './services/resolver';
 import QRCode from 'qrcode';
+import Resolver from './pages/Resolver';
 import './index.css'; // Import Tailwind CSS
 
 // Temporarily comment out the problematic import
@@ -76,7 +77,7 @@ function DynamicQRGenerator() {
       const eventId = formData.eventId || generateEventId();
       
       // Create static resolver URL (this never changes!)
-      const resolverUrl = `https://dynaqr.resolver.com/resolve?event=${eventId}`;
+      const resolverUrl = `https://hackseries-dynamic-scan.vercel.app/resolve?event=${eventId}`;
       
       // Create event on Algorand blockchain
       const eventData: Omit<DynamicQREvent, 'createdAt' | 'owner' | 'scanCount' | 'active' | 'transactionId' | 'blockHeight'> = {
@@ -881,7 +882,7 @@ function TestScan() {
         <div className="mt-6 p-4 bg-white rounded-lg border">
           <h3 className="font-semibold text-gray-700 mb-2">📋 Example Resolver URL</h3>
           <p className="text-sm font-mono bg-gray-100 p-2 rounded border break-all">
-            https://dynaqr.resolver.com/resolve?event=ALGOHACK-2025-xyz123
+            https://hackseries-dynamic-scan.vercel.app/resolve?event=ALGOHACK-2025-xyz123
           </p>
           <p className="text-xs text-gray-500 mt-2">
             This static URL is what gets encoded in the QR code. The destination it resolves to can be updated anytime via the blockchain.
@@ -1147,6 +1148,7 @@ function App() {
             <Route path="/generate" element={<DynamicQRGenerator />} />
             <Route path="/scan" element={<TestScan />} />
             <Route path="/history" element={<TestHistory />} />
+            <Route path="/resolve" element={<Resolver />} />
             <Route path="*" element={<div className="text-center py-12">Page not found</div>} />
           </Routes>
         </main>
