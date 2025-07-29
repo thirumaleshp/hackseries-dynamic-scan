@@ -1,6 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
+import { dynaQRService, DynamicQREvent } from './services/algorand';
+import { dynaQRResolver, ResolverResponse } from './services/resolver';
+import QRCode from 'qrcode';
 import './index.css'; // Import Tailwind CSS
 
 // Temporarily comment out the problematic import
@@ -17,8 +20,34 @@ function DynamicQRGenerator() {
     accessType: 'public' // public, nft-gated, time-based
   });
   const [qrValue, setQrValue] = React.useState('');
+  const [qrImageUrl, setQrImageUrl] = React.useState('');
   const [generated, setGenerated] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [walletConnected, setWalletConnected] = React.useState(false);
+  const [connectedAccount, setConnectedAccount] = React.useState<any>(null);
+
+  // Check wallet connection on component mount
+  React.useEffect(() => {
+    const account = dynaQRService.getConnectedAccount();
+    if (account) {
+      setWalletConnected(true);
+      setConnectedAccount(account);
+    }
+  }, []);
+
+  // Connect wallet function
+  const connectWallet = async () => {
+    try {
+      const account = await dynaQRService.connectWallet('pera');
+      if (account) {
+        setWalletConnected(true);
+        setConnectedAccount(account);
+        toast.success('🔗 Wallet connected successfully!');
+      }
+    } catch (error) {
+      toast.error('❌ Failed to connect wallet');
+    }
+  };
 
   // Generate unique Event ID if not provided
   const generateEventId = () => {
@@ -31,7 +60,12 @@ function DynamicQRGenerator() {
     e.preventDefault();
     
     if (!formData.eventName || !formData.initialUrl) {
-      alert('Please fill in Event Name and Initial URL');
+      toast.error('Please fill in Event Name and Initial URL');
+      return;
+    }
+
+    if (!walletConnected) {
+      toast.error('Please connect your wallet first');
       return;
     }
     
@@ -44,42 +78,73 @@ function DynamicQRGenerator() {
       // Create static resolver URL (this never changes!)
       const resolverUrl = `https://dynaqr.resolver.com/resolve?event=${eventId}`;
       
-      // Simulate Algorand smart contract deployment
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Store event data (in real app, this would go to Algorand smart contract)
-      const eventData = {
+      // Create event on Algorand blockchain
+      const eventData: Omit<DynamicQREvent, 'createdAt' | 'owner' | 'scanCount' | 'active' | 'transactionId' | 'blockHeight'> = {
         eventId,
         eventName: formData.eventName,
         currentUrl: formData.initialUrl,
         description: formData.description,
-        accessType: formData.accessType,
-        createdAt: new Date().toISOString(),
+        accessType: formData.accessType as 'public' | 'nft-gated' | 'time-based',
         expiryDate: formData.expiryDate,
-        resolverUrl,
-        transactionId: `ALGO_${eventId}_${Date.now()}`,
-        blockHeight: Math.floor(Math.random() * 1000000) + 500000
+        resolverUrl
       };
+
+      const result = await dynaQRService.createEvent(eventData);
       
-      // Store in localStorage (demo purposes - real app uses Algorand)
-      const existingEvents = JSON.parse(localStorage.getItem('dynamicQREvents') || '{}');
-      existingEvents[eventId] = eventData;
-      localStorage.setItem('dynamicQREvents', JSON.stringify(existingEvents));
-      
-      setQrValue(resolverUrl);
-      setFormData(prev => ({ ...prev, eventId }));
-      setGenerated(true);
+      if (result.success) {
+        setQrValue(resolverUrl);
+        
+        // Generate actual QR code image
+        try {
+          const qrImageDataUrl = await QRCode.toDataURL(resolverUrl, {
+            width: 256,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            },
+            errorCorrectionLevel: 'M'
+          });
+          setQrImageUrl(qrImageDataUrl);
+        } catch (qrError) {
+          console.error('Failed to generate QR code image:', qrError);
+          toast.error('⚠️ QR image generation failed, but event was created');
+        }
+        
+        setFormData(prev => ({ ...prev, eventId }));
+        setGenerated(true);
+        toast.success('🎉 Dynamic QR created on Algorand blockchain!');
+      } else {
+        throw new Error(result.error || 'Failed to create event');
+      }
       
     } catch (error) {
-      alert('Failed to create dynamic QR code');
+      toast.error(`❌ Failed to create dynamic QR: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
   const downloadQR = () => {
-    // We'll implement actual QR code download here
-    alert('QR Code download feature coming soon!');
+    if (qrImageUrl) {
+      // Create download link
+      const link = document.createElement('a');
+      link.href = qrImageUrl;
+      link.download = `DynaQR-${formData.eventId || 'QRCode'}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('📥 QR Code downloaded successfully!');
+    } else {
+      toast.error('❌ No QR code image available to download');
+    }
+  };
+
+  const copyResolverUrl = async () => {
+    if (qrValue) {
+      await navigator.clipboard.writeText(qrValue);
+      toast.success('📋 Resolver URL copied to clipboard!');
+    }
   };
 
   return (
@@ -91,6 +156,39 @@ function DynamicQRGenerator() {
           powered by Algorand blockchain smart contracts.
         </p>
       </div>
+
+      {!walletConnected && (
+        <div className="mb-8 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-yellow-800 mb-2">🔐 Connect Wallet Required</h3>
+              <p className="text-yellow-700">
+                Connect your Algorand wallet to create dynamic QR codes on the blockchain.
+              </p>
+            </div>
+            <button
+              onClick={connectWallet}
+              className="px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+            >
+              Connect Pera Wallet
+            </button>
+          </div>
+        </div>
+      )}
+
+      {walletConnected && connectedAccount && (
+        <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-green-800 font-semibold">✅ Wallet Connected</span>
+              <p className="text-sm text-green-600">{connectedAccount.address}</p>
+            </div>
+            <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">
+              {connectedAccount.provider || 'Connected'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {!generated ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -110,6 +208,7 @@ function DynamicQRGenerator() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., AlgoHack 2025"
                   required
+                  disabled={!walletConnected}
                 />
               </div>
 
@@ -123,6 +222,7 @@ function DynamicQRGenerator() {
                   onChange={(e) => setFormData({...formData, eventId: e.target.value})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Auto-generated if empty"
+                  disabled={!walletConnected}
                 />
                 <p className="text-xs text-gray-500 mt-1">Unique identifier for your event</p>
               </div>
@@ -138,6 +238,7 @@ function DynamicQRGenerator() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="https://your-event-website.com"
                   required
+                  disabled={!walletConnected}
                 />
                 <p className="text-xs text-gray-500 mt-1">Where the QR code will redirect initially</p>
               </div>
@@ -152,6 +253,7 @@ function DynamicQRGenerator() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   rows={3}
                   placeholder="Brief description of your event"
+                  disabled={!walletConnected}
                 />
               </div>
 
@@ -163,6 +265,7 @@ function DynamicQRGenerator() {
                   value={formData.accessType}
                   onChange={(e) => setFormData({...formData, accessType: e.target.value})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={!walletConnected}
                 >
                   <option value="public">🌐 Public Access</option>
                   <option value="nft-gated">🎫 NFT Gated</option>
@@ -179,12 +282,13 @@ function DynamicQRGenerator() {
                   value={formData.expiryDate}
                   onChange={(e) => setFormData({...formData, expiryDate: e.target.value})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={!walletConnected}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !walletConnected}
                 className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {loading ? (
@@ -239,6 +343,14 @@ function DynamicQRGenerator() {
                 <li>• Dynamic landing pages</li>
               </ul>
             </div>
+
+            {walletConnected && (
+              <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-200">
+                <p className="text-sm text-green-800">
+                  ⚡ <strong>Blockchain Ready:</strong> Your wallet is connected and ready to create dynamic QR codes on Algorand TestNet.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -248,13 +360,23 @@ function DynamicQRGenerator() {
             <h2 className="text-2xl font-semibold text-gray-800 mb-6">🎉 Dynamic QR Created!</h2>
             
             <div className="mb-6">
-              <div className="w-64 h-64 bg-gray-100 mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
-                <div className="text-center">
-                  <div className="text-4xl mb-2">📱</div>
-                  <p className="text-sm text-gray-500">QR Code Preview</p>
-                  <p className="text-xs text-gray-400 mt-1">{formData.eventName}</p>
+              {qrImageUrl ? (
+                <div className="w-64 h-64 mx-auto flex items-center justify-center rounded-lg border-2 border-gray-200 bg-white">
+                  <img 
+                    src={qrImageUrl} 
+                    alt={`QR Code for ${formData.eventName}`}
+                    className="w-full h-full object-contain rounded-lg"
+                  />
                 </div>
-              </div>
+              ) : (
+                <div className="w-64 h-64 bg-gray-100 mx-auto flex items-center justify-center rounded-lg border-2 border-dashed border-gray-300">
+                  <div className="text-center">
+                    <div className="text-4xl mb-2">📱</div>
+                    <p className="text-sm text-gray-500">Generating QR Code...</p>
+                    <p className="text-xs text-gray-400 mt-1">{formData.eventName}</p>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -265,13 +387,25 @@ function DynamicQRGenerator() {
                 📥 Download QR Code
               </button>
               <button
-                onClick={() => navigator.clipboard.writeText(qrValue)}
+                onClick={copyResolverUrl}
                 className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 📋 Copy Resolver URL
               </button>
               <button
-                onClick={() => setGenerated(false)}
+                onClick={() => {
+                  setGenerated(false);
+                  setQrImageUrl('');
+                  setQrValue('');
+                  setFormData({
+                    eventName: '',
+                    eventId: '',
+                    initialUrl: '',
+                    description: '',
+                    expiryDate: '',
+                    accessType: 'public'
+                  });
+                }}
                 className="w-full px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
               >
                 ➕ Create Another
@@ -475,12 +609,65 @@ function TestDashboard() {
 }
 
 function TestScan() {
+  const [eventId, setEventId] = React.useState('');
+  const [resolving, setResolving] = React.useState(false);
+  const [resolveResult, setResolveResult] = React.useState<ResolverResponse | null>(null);
+  const [qrScanActive, setQrScanActive] = React.useState(false);
+
+  const handleResolve = async () => {
+    if (!eventId.trim()) {
+      toast.error('Please enter an Event ID');
+      return;
+    }
+
+    setResolving(true);
+    setResolveResult(null);
+
+    try {
+      const result = await dynaQRResolver.resolveEvent(eventId.trim());
+      setResolveResult(result);
+
+      if (result.success) {
+        toast.success('✅ Event resolved successfully!');
+      } else {
+        toast.error(`❌ Resolution failed: ${result.error}`);
+      }
+    } catch (error) {
+      toast.error('❌ Resolver service error');
+      setResolveResult({
+        success: false,
+        eventId: eventId.trim(),
+        error: 'Service unavailable'
+      });
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const simulateQRScan = async () => {
+    setQrScanActive(true);
+    
+    // Simulate camera scanning delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Simulate scanning an existing event
+    const mockEvents = ['ALGOHACK-2025-xyz123', 'WEB3CONF-2025-abc789', 'MARKETING-2025-def456'];
+    const randomEvent = mockEvents[Math.floor(Math.random() * mockEvents.length)];
+    
+    setEventId(randomEvent);
+    setQrScanActive(false);
+    toast.success(`📱 QR Code scanned: ${randomEvent}`);
+    
+    // Auto-resolve the scanned event
+    setTimeout(() => handleResolve(), 500);
+  };
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">🔍 QR Code Resolver</h1>
         <p className="text-gray-600">
-          Test the dynamic QR resolver system. Enter an event ID to see how the system resolves destinations.
+          Test the dynamic QR resolver system. Enter an event ID or scan a QR code to see how the system resolves destinations.
         </p>
       </div>
 
@@ -495,48 +682,137 @@ function TestScan() {
               </label>
               <input
                 type="text"
+                value={eventId}
+                onChange={(e) => setEventId(e.target.value)}
                 placeholder="e.g., ALGOHACK-2025-xyz123"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                disabled={resolving}
               />
-            </div>
-            <button className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              🔍 Resolve Destination
-            </button>
-            
-            {/* Mock Resolution Result */}
-            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <h3 className="font-semibold text-green-800 mb-2">✅ Resolution Successful</h3>
-              <div className="space-y-2 text-sm">
-                <p><strong>Event:</strong> AlgoHack 2025 Hackathon</p>
-                <p><strong>Current URL:</strong> 
-                  <a href="#" className="text-blue-600 hover:text-blue-800 ml-1">
-                    https://algohack2025.com/registration
-                  </a>
-                </p>
-                <p><strong>Access Type:</strong> Public</p>
-                <p><strong>Status:</strong> Active</p>
-                <p><strong>Last Updated:</strong> 2 minutes ago</p>
+              <div className="mt-2 text-xs text-gray-500">
+                <p>Try these demo events:</p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {['ALGOHACK-2025-xyz123', 'WEB3CONF-2025-abc789', 'MARKETING-2025-def456'].map((id) => (
+                    <button
+                      key={id}
+                      onClick={() => setEventId(id)}
+                      className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded hover:bg-gray-200"
+                      disabled={resolving}
+                    >
+                      {id}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+            
+            <button 
+              onClick={handleResolve}
+              disabled={resolving || !eventId.trim()}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              {resolving ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Resolving...
+                </>
+              ) : (
+                '🔍 Resolve Destination'
+              )}
+            </button>
+            
+            {/* Resolution Result */}
+            {resolveResult && (
+              <div className={`mt-4 p-4 rounded-lg border ${
+                resolveResult.success 
+                  ? 'bg-green-50 border-green-200' 
+                  : 'bg-red-50 border-red-200'
+              }`}>
+                <h3 className={`font-semibold mb-2 ${
+                  resolveResult.success ? 'text-green-800' : 'text-red-800'
+                }`}>
+                  {resolveResult.success ? '✅ Resolution Successful' : '❌ Resolution Failed'}
+                </h3>
+                
+                {resolveResult.success ? (
+                  <div className="space-y-2 text-sm">
+                    <p><strong>Event:</strong> {resolveResult.eventName}</p>
+                    <p><strong>Current URL:</strong> 
+                      <a 
+                        href={resolveResult.redirectUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 ml-1 break-all"
+                      >
+                        {resolveResult.redirectUrl}
+                      </a>
+                    </p>
+                    <p><strong>Access Type:</strong> 
+                      <span className="ml-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                        {resolveResult.accessType}
+                      </span>
+                    </p>
+                    <p><strong>Status:</strong> Active</p>
+                    <p><strong>Scan Count:</strong> {resolveResult.metadata?.scanCount}</p>
+                    <p><strong>Last Scanned:</strong> {resolveResult.metadata?.lastScanned ? new Date(resolveResult.metadata.lastScanned).toLocaleString() : 'Just now'}</p>
+                    
+                    <div className="mt-3 pt-3 border-t border-green-200">
+                      <button
+                        onClick={() => window.open(resolveResult.redirectUrl, '_blank')}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        🔗 Open Destination
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-red-700">
+                    <p><strong>Error:</strong> {resolveResult.error}</p>
+                    <p className="mt-2 text-xs">
+                      Common issues: Event not found, expired, or access denied
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-md border">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">📱 QR Scanner</h2>
-          <div className="bg-gray-100 p-8 rounded-lg border-2 border-dashed border-gray-300 text-center mb-4">
+          <div className={`p-8 rounded-lg border-2 border-dashed text-center mb-4 transition-colors ${
+            qrScanActive 
+              ? 'bg-blue-50 border-blue-300' 
+              : 'bg-gray-100 border-gray-300'
+          }`}>
             <div className="text-gray-500 mb-4">
-              <div className="text-6xl mb-2">📷</div>
-              <p>Camera view would appear here</p>
-              <p className="text-sm">Scan DynaQR codes to test resolution</p>
+              {qrScanActive ? (
+                <>
+                  <div className="text-6xl mb-2 animate-pulse">📷</div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p>Scanning QR code...</p>
+                  <p className="text-sm">Looking for DynaQR resolver URLs</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-6xl mb-2">📷</div>
+                  <p>Camera view would appear here</p>
+                  <p className="text-sm">Scan DynaQR codes to test resolution</p>
+                </>
+              )}
             </div>
-            <button className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-              📸 Start Camera
+            <button 
+              onClick={simulateQRScan}
+              disabled={qrScanActive}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {qrScanActive ? '🔄 Scanning...' : '📸 Start Camera'}
             </button>
           </div>
           <div className="text-xs text-gray-500 space-y-1">
             <p>• Supports standard QR codes</p>
             <p>• Automatically detects DynaQR resolver URLs</p>
             <p>• Shows resolution status and destination</p>
+            <p>• Updates scan count on Algorand blockchain</p>
           </div>
         </div>
       </div>
@@ -604,8 +880,8 @@ function TestScan() {
         
         <div className="mt-6 p-4 bg-white rounded-lg border">
           <h3 className="font-semibold text-gray-700 mb-2">📋 Example Resolver URL</h3>
-          <p className="text-sm font-mono bg-gray-100 p-2 rounded border">
-            https://dynaQR.resolve/ALGOHACK-2025-xyz123
+          <p className="text-sm font-mono bg-gray-100 p-2 rounded border break-all">
+            https://dynaqr.resolver.com/resolve?event=ALGOHACK-2025-xyz123
           </p>
           <p className="text-xs text-gray-500 mt-2">
             This static URL is what gets encoded in the QR code. The destination it resolves to can be updated anytime via the blockchain.
