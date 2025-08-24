@@ -5,6 +5,10 @@ import { dynaQRService, DynamicQREvent } from './services/algorand';
 import { dynaQRResolver, ResolverResponse } from './services/resolver';
 import QRCode from 'qrcode';
 import Resolver from './pages/Resolver';
+import CreateEvent from './pages/CreateEvent';
+import Events from './pages/Events';
+import EventRegistration from './pages/EventRegistration';
+import NFTGallery from './pages/NFTGallery';
 import DebugInfo from './components/DebugInfo';
 import './index.css'; // Import Tailwind CSS
 
@@ -525,10 +529,10 @@ function TestDashboard() {
           </p>
           <div className="space-y-3">
             <Link 
-              to="/generate" 
+              to="/create-event" 
               className="block w-full text-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              🎯 Create Your First Dynamic QR
+              🎯 Create Your First Event
             </Link>
             <div className="text-sm text-gray-600">
               <p className="mb-2"><strong>How it works:</strong></p>
@@ -1147,9 +1151,12 @@ function App() {
               </div>
               <div className="flex items-center space-x-8">
                 <Link to="/" className="text-gray-600 hover:text-gray-900 font-medium">Dashboard</Link>
-                <Link to="/generate" className="text-gray-600 hover:text-gray-900 font-medium">Create QR</Link>
+                <Link to="/create-event" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Create Event</Link>
+                <Link to="/events" className="text-gray-600 hover:text-gray-900 font-medium">Events</Link>
+                <Link to="/generate" className="text-gray-600 hover:text-gray-900 font-medium">QR Generator</Link>
                 <Link to="/scan" className="text-gray-600 hover:text-gray-900 font-medium">Test Scan</Link>
-                <Link to="/history" className="text-gray-600 hover:text-gray-900 font-medium">Manage Events</Link>
+                <Link to="/history" className="text-gray-600 hover:text-gray-900 font-medium">Analytics</Link>
+                <Link to="/nft-gallery" className="text-gray-600 hover:text-gray-900 font-medium">NFT Gallery</Link>
               </div>
             </div>
           </div>
@@ -1158,10 +1165,14 @@ function App() {
         <main className="py-8">
           <Routes>
             <Route path="/" element={<TestDashboard />} />
+            <Route path="/create-event" element={<CreateEvent />} />
+            <Route path="/events" element={<Events />} />
+            <Route path="/event/:eventId/register" element={<EventRegistration />} />
             <Route path="/generate" element={<DynamicQRGenerator />} />
             <Route path="/scan" element={<TestScan />} />
             <Route path="/history" element={<TestHistory />} />
             <Route path="/resolve" element={<Resolver />} />
+            <Route path="/nft-gallery" element={<NFTGallery />} />
             <Route path="*" element={<div className="text-center py-12">Page not found</div>} />
           </Routes>
         </main>
