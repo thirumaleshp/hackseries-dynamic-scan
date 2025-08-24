@@ -189,6 +189,153 @@ class DynaQRAlgorandService {
     }
   }
 
+  // Event Registration Methods
+  async registerForEvent(registrationData: {
+    eventId: string;
+    attendeeAddress: string;
+    ticketTier: string;
+    paymentAmount: number;
+    attendeeName: string;
+    attendeeEmail: string;
+  }): Promise<ContractResult> {
+    try {
+      if (!this.connectedAccount) {
+        throw new Error('Wallet not connected');
+      }
+
+      // Check if event exists
+      const eventResult = await this.getEvent(registrationData.eventId);
+      if (!eventResult.success || !eventResult.data) {
+        return { success: false, error: 'Event not found' };
+      }
+
+      // Check if user is already registered
+      const existingRegistrations = JSON.parse(localStorage.getItem('algorandEventRegistrations') || '{}');
+      const userKey = `${registrationData.attendeeAddress}_${registrationData.eventId}`;
+      
+      if (existingRegistrations[userKey]) {
+        return { success: false, error: 'Already registered for this event' };
+      }
+
+      // Simulate blockchain transaction
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      const transactionId = `REGISTER_${registrationData.eventId}_${Date.now()}`;
+
+      // Store registration data
+      const registration = {
+        eventId: registrationData.eventId,
+        attendeeAddress: registrationData.attendeeAddress,
+        ticketTier: registrationData.ticketTier,
+        paymentAmount: registrationData.paymentAmount,
+        attendeeName: registrationData.attendeeName,
+        attendeeEmail: registrationData.attendeeEmail,
+        registrationDate: new Date().toISOString(),
+        status: 'confirmed',
+        transactionId
+      };
+
+      existingRegistrations[userKey] = registration;
+      localStorage.setItem('algorandEventRegistrations', JSON.stringify(existingRegistrations));
+
+      // Update event registration count
+      const existingEvents = JSON.parse(localStorage.getItem('algorandQREvents') || '{}');
+      if (existingEvents[registrationData.eventId]) {
+        existingEvents[registrationData.eventId].scanCount = (existingEvents[registrationData.eventId].scanCount || 0) + 1;
+        localStorage.setItem('algorandQREvents', JSON.stringify(existingEvents));
+      }
+
+      const result: ContractResult = {
+        success: true,
+        transactionId,
+        data: registration
+      };
+
+      console.log('✅ Event registration successful:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Event registration failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async confirmAttendance(eventId: string): Promise<ContractResult> {
+    try {
+      if (!this.connectedAccount) {
+        throw new Error('Wallet not connected');
+      }
+
+      // Check if user is registered
+      const existingRegistrations = JSON.parse(localStorage.getItem('algorandEventRegistrations') || '{}');
+      const userKey = `${this.connectedAccount.address}_${eventId}`;
+      
+      if (!existingRegistrations[userKey]) {
+        return { success: false, error: 'Not registered for this event' };
+      }
+
+      // Simulate blockchain transaction
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const transactionId = `ATTEND_${eventId}_${Date.now()}`;
+
+      // Update registration status
+      existingRegistrations[userKey].status = 'attended';
+      existingRegistrations[userKey].attendanceDate = new Date().toISOString();
+      existingRegistrations[userKey].attendanceTransactionId = transactionId;
+      localStorage.setItem('algorandEventRegistrations', JSON.stringify(existingRegistrations));
+
+      // Increment scan count
+      await this.incrementScanCount(eventId);
+
+      const result: ContractResult = {
+        success: true,
+        transactionId,
+        data: {
+          eventId,
+          attendeeAddress: this.connectedAccount.address,
+          status: 'attended'
+        }
+      };
+
+      console.log('✅ Attendance confirmed:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Attendance confirmation failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async getUserRegistrations(userAddress?: string): Promise<ContractResult> {
+    try {
+      const address = userAddress || this.connectedAccount?.address;
+      if (!address) {
+        return { success: false, error: 'No address provided' };
+      }
+
+      const existingRegistrations = JSON.parse(localStorage.getItem('algorandEventRegistrations') || '{}');
+      const userRegistrations = Object.values(existingRegistrations).filter(
+        (reg: any) => reg.attendeeAddress === address
+      );
+
+      return {
+        success: true,
+        data: userRegistrations
+      };
+    } catch (error) {
+      console.error('❌ Failed to get user registrations:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
   async updateEventUrl(eventId: string, newUrl: string): Promise<ContractResult> {
     try {
       if (!this.connectedAccount) {
