@@ -363,17 +363,14 @@ const Events: React.FC = () => {
                     </div>
                     
                     <div className="flex space-x-2">
-                      <Link
-                        to={`/event/${event.id}/register`}
-                        className="flex-1 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors text-center"
-                      >
-                        Register
-                      </Link>
-                      <button className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+                      <button className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
                         Manage
                       </button>
                       <button className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
                         <Eye size={16} />
+                      </button>
+                      <button className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
+                        <Share2 size={16} />
                       </button>
                     </div>
                   </div>

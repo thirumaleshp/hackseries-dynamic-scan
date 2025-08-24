@@ -7,8 +7,6 @@ import QRCode from 'qrcode';
 import Resolver from './pages/Resolver';
 import CreateEvent from './pages/CreateEvent';
 import Events from './pages/Events';
-import EventRegistration from './pages/EventRegistration';
-import NFTGallery from './pages/NFTGallery';
 import DebugInfo from './components/DebugInfo';
 import './index.css'; // Import Tailwind CSS
 
@@ -1156,7 +1154,6 @@ function App() {
                 <Link to="/generate" className="text-gray-600 hover:text-gray-900 font-medium">QR Generator</Link>
                 <Link to="/scan" className="text-gray-600 hover:text-gray-900 font-medium">Test Scan</Link>
                 <Link to="/history" className="text-gray-600 hover:text-gray-900 font-medium">Analytics</Link>
-                <Link to="/nft-gallery" className="text-gray-600 hover:text-gray-900 font-medium">NFT Gallery</Link>
               </div>
             </div>
           </div>
@@ -1167,12 +1164,10 @@ function App() {
             <Route path="/" element={<TestDashboard />} />
             <Route path="/create-event" element={<CreateEvent />} />
             <Route path="/events" element={<Events />} />
-            <Route path="/event/:eventId/register" element={<EventRegistration />} />
             <Route path="/generate" element={<DynamicQRGenerator />} />
             <Route path="/scan" element={<TestScan />} />
             <Route path="/history" element={<TestHistory />} />
             <Route path="/resolve" element={<Resolver />} />
-            <Route path="/nft-gallery" element={<NFTGallery />} />
             <Route path="*" element={<div className="text-center py-12">Page not found</div>} />
           </Routes>
         </main>
