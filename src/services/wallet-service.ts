@@ -47,6 +47,17 @@ class AlgorandWalletService {
   private connectedAccount: WalletAccount | null = null;
   private walletProvider: any = null;
 
+  private async isOptedIn(address: string, appId: number): Promise<boolean> {
+    try {
+      const accountInfo = await algodClient.accountInformation(address).do();
+      const localState = accountInfo['apps-local-state'] ?? [];
+      return localState.some((entry: any) => entry.id === appId);
+    } catch (error) {
+      console.error('❌ Failed to check opt-in status:', error);
+      return false;
+    }
+  }
+
   // Check if Pera Wallet is available
   private isPeraWalletAvailable(): boolean {
     return typeof window !== 'undefined' && (window as any).PeraWalletConnect;
@@ -195,6 +206,38 @@ class AlgorandWalletService {
     } catch (error) {
       console.error('❌ Wallet disconnection failed:', error);
     }
+  }
+
+  async ensureAppOptIn(appId: number, address?: string): Promise<boolean> {
+    if (!appId || appId <= 0) {
+      throw new Error('Invalid application ID');
+    }
+
+    const accountAddress = address || this.connectedAccount?.address;
+    if (!accountAddress) {
+      throw new Error('Wallet not connected');
+    }
+
+    const alreadyOptedIn = await this.isOptedIn(accountAddress, appId);
+    if (alreadyOptedIn) {
+      return false;
+    }
+
+    const suggestedParams = await algodClient.getTransactionParams().do();
+
+    const optInTxn = algosdk.makeApplicationOptInTxnFromObject({
+      from: accountAddress,
+      appIndex: appId,
+      suggestedParams
+    });
+
+    const result = await this.signAndSendTransaction(optInTxn);
+    if (!result.success) {
+      throw new Error(result.error || 'Application opt-in failed');
+    }
+
+    console.log(`✅ ${accountAddress} opted-in to app ${appId}`);
+    return true;
   }
 
   // Get connected account
@@ -459,5 +502,7 @@ export const walletService = new AlgorandWalletService();
 
 // Export types and functions
 export type { WalletAccount, WalletConnectionResult, TransactionResult };
+export const ensureAppOptIn = (appId: number, address?: string) =>
+  walletService.ensureAppOptIn(appId, address);
 export default walletService;
 

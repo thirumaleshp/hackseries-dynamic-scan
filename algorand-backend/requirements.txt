@@ -1,0 +1,4 @@
+pyteal==0.27.0
+py-algorand-sdk==2.4.0
+algokit-utils==4.2.1
+python-dotenv==1.0.1

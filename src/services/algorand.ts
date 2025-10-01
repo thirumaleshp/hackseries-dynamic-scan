@@ -298,6 +298,8 @@ class DynaQRAlgorandService {
       const account = this.ensureWalletConnected();
       const appId = this.ensureAppId();
 
+      await walletService.ensureAppOptIn(appId, account.address);
+
       if (payload.attendeeAddress && payload.attendeeAddress !== account.address) {
         throw new Error('Connected wallet does not match attendee address');
       }
@@ -817,7 +819,8 @@ class DynaQRAlgorandService {
       const suffix = EVENT_GLOBAL_SUFFIXES.find((s) => key.endsWith(s));
       if (!suffix) return;
 
-      const eventId = key.slice(0, key.length - suffix.length);
+      const rawEventId = key.slice(0, key.length - suffix.length);
+      const eventId = rawEventId.endsWith('::') ? rawEventId.slice(0, -2) : rawEventId;
       if (!eventId) return;
 
       const eventState = events.get(eventId) || new Map();
