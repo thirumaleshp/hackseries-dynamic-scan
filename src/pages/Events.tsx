@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Calendar, 
@@ -20,6 +20,9 @@ import {
   AlertCircle,
   XCircle
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { dynaQRService, DynamicQREvent } from '../services/algorand';
+import WalletConnection from '../components/WalletConnection';
 
 interface Event {
   id: string;
@@ -50,86 +53,100 @@ interface Event {
 }
 
 const Events: React.FC = () => {
-  const [events] = useState<Event[]>([
-    {
-      id: '1',
-      title: 'Algorand Developer Summit 2025',
-      description: 'Annual gathering of Algorand developers and blockchain enthusiasts',
-      date: '2025-09-15',
-      endDate: '2025-09-17',
-      location: 'Boston Convention Center, MA',
-      category: 'Conference',
-      status: 'published',
-      attendees: { registered: 450, checkedIn: 0, capacity: 500 },
-      tickets: { sold: 450, revenue: 22500, types: 3 },
-      qrCodes: { generated: 450, scanned: 0 },
-      createdAt: '2025-01-10',
-      updatedAt: '2025-01-15',
-      image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400'
-    },
-    {
-      id: '2',
-      title: 'DeFi Workshop Series',
-      description: 'Hands-on workshops covering DeFi protocols and development',
-      date: '2025-08-28',
-      endDate: '2025-08-30',
-      location: 'TechHub San Francisco, CA',
-      category: 'Workshop',
-      status: 'active',
-      attendees: { registered: 120, checkedIn: 85, capacity: 150 },
-      tickets: { sold: 120, revenue: 3600, types: 2 },
-      qrCodes: { generated: 120, scanned: 85 },
-      createdAt: '2025-01-05',
-      updatedAt: '2025-01-20',
-      image: 'https://images.unsplash.com/photo-1559523161-0fc0d8b38a7a?w=400'
-    },
-    {
-      id: '3',
-      title: 'Blockchain Meetup Boston',
-      description: 'Monthly meetup for blockchain enthusiasts and developers',
-      date: '2025-08-20',
-      location: 'MIT Media Lab, Cambridge, MA',
-      category: 'Meetup',
-      status: 'ended',
-      attendees: { registered: 85, checkedIn: 78, capacity: 100 },
-      tickets: { sold: 85, revenue: 850, types: 1 },
-      qrCodes: { generated: 85, scanned: 78 },
-      createdAt: '2025-01-01',
-      updatedAt: '2025-01-21',
-      image: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=400'
-    },
-    {
-      id: '4',
-      title: 'Smart Contract Hackathon',
-      description: '48-hour hackathon building on Algorand blockchain',
-      date: '2025-08-10',
-      endDate: '2025-08-12',
-      location: 'Innovation District, Austin, TX',
-      category: 'Hackathon',
-      status: 'ended',
-      attendees: { registered: 200, checkedIn: 185, capacity: 200 },
-      tickets: { sold: 200, revenue: 8000, types: 2 },
-      qrCodes: { generated: 200, scanned: 185 },
-      createdAt: '2024-12-15',
-      updatedAt: '2025-01-12',
-      image: 'https://images.unsplash.com/photo-1517077304055-6e89abbf09b0?w=400'
-    },
-    {
-      id: '5',
-      title: 'NFT Art Gallery Opening',
-      description: 'Exclusive preview of NFT artworks on Algorand',
-      date: '2025-09-30',
-      location: 'Digital Arts Museum, Los Angeles, CA',
-      category: 'Exhibition',
-      status: 'draft',
-      attendees: { registered: 0, checkedIn: 0, capacity: 300 },
-      tickets: { sold: 0, revenue: 0, types: 3 },
-      qrCodes: { generated: 0, scanned: 0 },
-      createdAt: '2025-01-22',
-      updatedAt: '2025-01-22',
-      image: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400'
+  const mapDynamicEventToUi = (event: DynamicQREvent): Event => {
+    const now = new Date();
+    const endDate = event.expiryDate ? new Date(event.expiryDate) : undefined;
+
+    let status: Event['status'] = 'draft';
+    if (event.active) {
+      status = endDate && endDate < now ? 'ended' : 'active';
+    } else if ((event.registeredCount ?? 0) > 0 || (event.scanCount ?? 0) > 0) {
+      status = 'ended';
     }
-  ]);
+
+    const category = event.metadata?.tags?.[0] || 'On-Chain';
+    const location =
+      event.metadata?.organizer?.organization ||
+      event.metadata?.organizer?.name ||
+      'Algorand Network';
+
+    const registered = event.registeredCount ?? 0;
+    const checkedIn = event.scanCount ?? 0;
+    const capacity = event.maxCapacity ?? registered;
+    const revenue = Number((event.ticketPriceAlgos * registered).toFixed(2));
+
+    return {
+      id: event.eventId,
+      title: event.eventName,
+      description: event.description || 'No description provided.',
+      date: event.createdAt,
+      endDate: event.expiryDate,
+      location,
+      category,
+      status,
+      attendees: {
+        registered,
+        checkedIn,
+        capacity
+      },
+      tickets: {
+        sold: registered,
+        revenue,
+        types: event.metadata?.ticketTiers?.length || 0
+      },
+      qrCodes: {
+        generated: registered,
+        scanned: checkedIn
+      },
+      createdAt: event.createdAt,
+      updatedAt: event.metadata?.lastUpdatedAt || event.createdAt,
+      image: undefined
+    };
+  };
+
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [walletConnected, setWalletConnected] = useState<boolean>(dynaQRService.isWalletConnected());
+
+  const handleWalletConnect = () => {
+    setWalletConnected(true);
+  };
+
+  const handleWalletDisconnect = () => {
+    setWalletConnected(false);
+    setEvents([]);
+  };
+
+  const fetchEvents = useCallback(async () => {
+    if (!walletConnected) {
+      setEvents([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const onChainEvents = await dynaQRService.getAllUserEvents();
+      const mapped = onChainEvents.map(mapDynamicEventToUi);
+      setEvents(mapped);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to load events:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [walletConnected]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  const handleRetry = () => {
+    fetchEvents();
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -152,20 +169,55 @@ const Events: React.FC = () => {
     }
   };
 
-  const filteredEvents = events.filter(event => {
-    const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         event.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         event.location.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredEvents = useMemo(() => {
+    return events.filter(event => {
+      const search = searchTerm.toLowerCase();
+      const matchesSearch =
+        event.title.toLowerCase().includes(search) ||
+        event.description.toLowerCase().includes(search) ||
+        event.location.toLowerCase().includes(search);
+      const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [events, searchTerm, statusFilter]);
 
-  const statsData = {
+  const statsData = useMemo(() => ({
     total: events.length,
     active: events.filter(e => e.status === 'active').length,
     published: events.filter(e => e.status === 'published').length,
     draft: events.filter(e => e.status === 'draft').length
-  };
+  }), [events]);
+
+  const buildEventUrl = useCallback((eventId: string) => {
+    if (typeof window === 'undefined') {
+      return `/events/${eventId}/register`;
+    }
+    return `${window.location.origin}/events/${eventId}/register`;
+  }, []);
+
+  const handleShare = useCallback(async (eventId: string) => {
+    if (typeof navigator === 'undefined') {
+      return;
+    }
+
+    const shareUrl = buildEventUrl(eventId);
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Join my Algorand event',
+          url: shareUrl
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Event link copied to clipboard');
+    } catch (error) {
+      console.error('Failed to share event:', error);
+      toast.error('Unable to share event link');
+    }
+  }, [buildEventUrl]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -177,13 +229,23 @@ const Events: React.FC = () => {
               <h1 className="text-3xl font-bold text-gray-900">Event Management</h1>
               <p className="text-gray-600 mt-1">Manage your blockchain-powered events and track performance</p>
             </div>
-            <Link
-              to="/create-event"
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-            >
-              <Calendar size={20} />
-              <span>Create Event</span>
-            </Link>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="w-full sm:w-auto">
+                <WalletConnection
+                  onConnect={handleWalletConnect}
+                  onDisconnect={handleWalletDisconnect}
+                  showBalance={true}
+                  className="sm:min-w-[260px]"
+                />
+              </div>
+              <Link
+                to="/create-event"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+              >
+                <Calendar size={20} />
+                <span>Create Event</span>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -363,13 +425,22 @@ const Events: React.FC = () => {
                     </div>
                     
                     <div className="flex space-x-2">
-                      <button className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+                      <Link
+                        to={`/events/${event.id}/manage`}
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors text-center"
+                      >
                         Manage
-                      </button>
-                      <button className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
+                      </Link>
+                      <Link
+                        to={`/events/${event.id}`}
+                        className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"
+                      >
                         <Eye size={16} />
-                      </button>
-                      <button className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors">
+                      </Link>
+                      <button
+                        onClick={() => handleShare(event.id)}
+                        className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition-colors"
+                      >
                         <Share2 size={16} />
                       </button>
                     </div>
@@ -433,13 +504,19 @@ const Events: React.FC = () => {
                           <div className="text-sm text-gray-500">{event.tickets.sold} tickets</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button className="text-blue-600 hover:text-blue-900">Manage</button>
-                            <button className="text-gray-600 hover:text-gray-900">
+                          <div className="flex space-x-3 items-center">
+                            <Link to={`/events/${event.id}/manage`} className="text-blue-600 hover:text-blue-900">Manage</Link>
+                            <Link to={`/events/${event.id}/register`} className="text-gray-600 hover:text-gray-900">
+                              Registration
+                            </Link>
+                            <Link to={`/events/${event.id}`} className="text-gray-600 hover:text-gray-900">
                               <Eye size={16} />
-                            </button>
-                            <button className="text-gray-600 hover:text-gray-900">
-                              <MoreVertical size={16} />
+                            </Link>
+                            <button
+                              onClick={() => handleShare(event.id)}
+                              className="text-gray-600 hover:text-gray-900"
+                            >
+                              <Share2 size={16} />
                             </button>
                           </div>
                         </td>

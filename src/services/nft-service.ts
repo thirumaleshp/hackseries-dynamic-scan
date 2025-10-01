@@ -1,4 +1,5 @@
 import algosdk from 'algosdk';
+import { walletService, TransactionResult } from './wallet-service';
 
 // Algorand network configuration
 const ALGORAND_CONFIG = {
@@ -68,18 +69,13 @@ export interface NFTServiceResult {
 }
 
 class AlgorandNFTService {
-  private connectedAccount: algosdk.Account | null = null;
-
-  // Set connected account
-  setConnectedAccount(account: algosdk.Account) {
-    this.connectedAccount = account;
-  }
+  // No need for separate account management - use wallet service
 
   // Create NFT Asset
   async createNFTAsset(params: NFTCreationParams): Promise<NFTServiceResult> {
     try {
-      if (!this.connectedAccount) {
-        throw new Error('No account connected');
+      if (!walletService.isConnected()) {
+        throw new Error('Wallet not connected');
       }
 
       // Generate unique asset name
@@ -89,44 +85,39 @@ class AlgorandNFTService {
       // Create metadata URL (IPFS or centralized storage)
       const metadataUrl = await this.createMetadataUrl(params);
       
-      // Create asset creation transaction
-      const suggestedParams = await algodClient.getTransactionParams().do();
-      
-      const txn = algosdk.makeAssetCreateTxnWithSuggestedParamsFromObject({
-        from: this.connectedAccount.addr,
-        suggestedParams,
+      // Use wallet service to create asset
+      const result = await walletService.createAsset({
+        name: assetName,
+        unitName: unitName,
         total: NFT_CONFIG.total,
         decimals: NFT_CONFIG.decimals,
-        assetName,
-        unitName,
-        assetURL: metadataUrl,
-        defaultFrozen: NFT_CONFIG.defaultFrozen,
-        manager: this.connectedAccount.addr,
-        reserve: this.connectedAccount.addr,
-        freeze: this.connectedAccount.addr,
-        clawback: this.connectedAccount.addr
+        url: metadataUrl,
+        manager: walletService.getConnectedAccount()?.address,
+        reserve: walletService.getConnectedAccount()?.address,
+        freeze: walletService.getConnectedAccount()?.address,
+        clawback: walletService.getConnectedAccount()?.address
       });
 
-      // Sign and submit transaction
-      const signedTxn = txn.signTxn(this.connectedAccount.sk);
-      const txId = await algodClient.sendRawTransaction(signedTxn).do();
-      
-      // Wait for confirmation
-      const confirmation = await algosdk.waitForConfirmation(algodClient, txId, 4);
-      const assetId = confirmation['asset-index'];
+      if (result.success && result.transactionId) {
+        // Get the asset ID from the transaction
+        const confirmation = await algodClient.pendingTransactionInformation(result.transactionId).do();
+        const assetId = confirmation['asset-index'];
 
-      console.log(`✅ NFT Asset created successfully! Asset ID: ${assetId}`);
+        console.log(`✅ NFT Asset created successfully! Asset ID: ${assetId}`);
 
-      return {
-        success: true,
-        assetId,
-        transactionId: txId,
-        data: {
-          assetName,
-          unitName,
-          metadataUrl
-        }
-      };
+        return {
+          success: true,
+          assetId,
+          transactionId: result.transactionId,
+          data: {
+            assetName,
+            unitName,
+            metadataUrl
+          }
+        };
+      } else {
+        throw new Error(result.error || 'Asset creation failed');
+      }
 
     } catch (error) {
       console.error('❌ NFT Asset creation failed:', error);
@@ -140,39 +131,28 @@ class AlgorandNFTService {
   // Mint NFT to attendee
   async mintNFTToAttendee(assetId: number, attendeeAddress: string): Promise<NFTServiceResult> {
     try {
-      if (!this.connectedAccount) {
-        throw new Error('No account connected');
+      if (!walletService.isConnected()) {
+        throw new Error('Wallet not connected');
       }
 
-      // Create asset transfer transaction
-      const suggestedParams = await algodClient.getTransactionParams().do();
-      
-      const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject({
-        from: this.connectedAccount.addr,
-        to: attendeeAddress,
-        suggestedParams,
-        assetIndex: assetId,
-        amount: 1
-      });
+      // Use wallet service to transfer asset
+      const result = await walletService.transferAsset(assetId, attendeeAddress, 1);
 
-      // Sign and submit transaction
-      const signedTxn = txn.signTxn(this.connectedAccount.sk);
-      const txId = await algodClient.sendRawTransaction(signedTxn).do();
-      
-      // Wait for confirmation
-      await algosdk.waitForConfirmation(algodClient, txId, 4);
+      if (result.success) {
+        console.log(`✅ NFT minted successfully to ${attendeeAddress}!`);
 
-      console.log(`✅ NFT minted successfully to ${attendeeAddress}!`);
-
-      return {
-        success: true,
-        transactionId: txId,
-        data: {
-          assetId,
-          recipient: attendeeAddress,
-          amount: 1
-        }
-      };
+        return {
+          success: true,
+          transactionId: result.transactionId,
+          data: {
+            assetId,
+            recipient: attendeeAddress,
+            amount: 1
+          }
+        };
+      } else {
+        throw new Error(result.error || 'NFT minting failed');
+      }
 
     } catch (error) {
       console.error('❌ NFT minting failed:', error);
