@@ -1,152 +1,256 @@
 import React, { useState, useEffect } from 'react';
+import { Wallet, LogOut, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
-import { Wallet, LogOut, AlertCircle, CheckCircle } from 'lucide-react';
-import { 
-  connectWallet, 
-  disconnectWallet, 
-  getConnectedAccount, 
-  isWalletConnected,
-  getAccountBalance,
-  getNetworkStatus
-} from '../services/algorand';
+import { walletService, WalletAccount } from '../services/wallet-service';
 
-const WalletConnection: React.FC = () => {
-  const [connected, setConnected] = useState(false);
-  const [account, setAccount] = useState<string | null>(null);
+interface WalletConnectionProps {
+  onConnect?: (account: WalletAccount) => void;
+  onDisconnect?: () => void;
+  showBalance?: boolean;
+  className?: string;
+}
+
+const WalletConnection: React.FC<WalletConnectionProps> = ({
+  onConnect,
+  onDisconnect,
+  showBalance = true,
+  className = ''
+}) => {
+  const [isConnected, setIsConnected] = useState(false);
+  const [account, setAccount] = useState<WalletAccount | null>(null);
   const [balance, setBalance] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  const [networkStatus, setNetworkStatus] = useState<any>(null);
+  const [availableWallets, setAvailableWallets] = useState<string[]>([]);
 
+  // Check connection status on mount
   useEffect(() => {
-    checkConnection();
-    checkNetworkStatus();
-  }, []);
-
-  const checkConnection = async () => {
-    const isConnected = isWalletConnected();
-    const connectedAccount = getConnectedAccount();
-    
-    setConnected(isConnected);
-    setAccount(connectedAccount);
-    
-    if (isConnected && connectedAccount) {
-      try {
-        const accountBalance = await getAccountBalance(connectedAccount);
-        setBalance(accountBalance);
-      } catch (error) {
-        console.error('Failed to get balance:', error);
+    const connectedAccount = walletService.getConnectedAccount();
+    if (connectedAccount) {
+      setIsConnected(true);
+      setAccount(connectedAccount);
+      if (showBalance) {
+        loadBalance(connectedAccount.address);
       }
     }
-  };
+    
+    // Get available wallets
+    setAvailableWallets(walletService.getAvailableWallets());
+  }, [showBalance]);
 
-  const checkNetworkStatus = async () => {
+  const loadBalance = async (address: string) => {
     try {
-      const status = await getNetworkStatus();
-      setNetworkStatus(status);
+      const accountBalance = await walletService.getAccountBalance(address);
+      setBalance(accountBalance);
     } catch (error) {
-      console.error('Failed to get network status:', error);
+      console.error('Failed to load balance:', error);
     }
   };
 
-  const handleConnect = async () => {
-    setLoading(true);
+  const connectWallet = async (provider: 'pera' | 'myalgo' = 'auto') => {
     try {
-      const connectedAccount = await connectWallet();
-      setAccount(connectedAccount);
-      setConnected(true);
+      setLoading(true);
       
-      const accountBalance = await getAccountBalance(connectedAccount);
-      setBalance(accountBalance);
+      const result = await walletService.connectWallet(provider);
       
-      toast.success('Wallet connected successfully!');
+      if (result.success && result.account) {
+        setIsConnected(true);
+        setAccount(result.account);
+        
+        if (showBalance) {
+          await loadBalance(result.account.address);
+        }
+        
+        onConnect?.(result.account);
+        toast.success(`🔗 Connected to ${result.account.provider} wallet!`);
+      } else {
+        toast.error(result.error || 'Failed to connect wallet');
+      }
     } catch (error) {
-      toast.error(`Failed to connect wallet: ${error.message}`);
+      console.error('Wallet connection error:', error);
+      toast.error('Failed to connect wallet');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDisconnect = () => {
-    disconnectWallet();
-    setConnected(false);
-    setAccount(null);
-    setBalance(0);
-    toast.success('Wallet disconnected');
+  const disconnectWallet = async () => {
+    try {
+      await walletService.disconnectWallet();
+      setIsConnected(false);
+      setAccount(null);
+      setBalance(0);
+      onDisconnect?.();
+      toast.success('🔌 Wallet disconnected');
+    } catch (error) {
+      console.error('Wallet disconnection error:', error);
+      toast.error('Failed to disconnect wallet');
+    }
   };
 
-  const formatAddress = (address: string) => {
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  const formatBalance = (microAlgos: number): string => {
+    const algos = microAlgos / 1000000;
+    return algos.toFixed(4);
   };
 
-  if (!connected) {
+  const formatAddress = (address: string): string => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const getWalletIcon = (provider?: string): string => {
+    switch (provider) {
+      case 'pera':
+        return '🔵';
+      case 'myalgo':
+        return '🟢';
+      default:
+        return '🔗';
+    }
+  };
+
+  const getWalletName = (provider?: string): string => {
+    switch (provider) {
+      case 'pera':
+        return 'Pera Wallet';
+      case 'myalgo':
+        return 'MyAlgo Wallet';
+      default:
+        return 'Algorand Wallet';
+    }
+  };
+
+  if (isConnected && account) {
     return (
-      <div className="card p-4">
+      <div className={`bg-green-50 border border-green-200 rounded-lg p-4 ${className}`}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-full bg-warning-500/10">
-              <AlertCircle className="h-5 w-5 text-warning-500" />
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <h3 className="font-medium">Wallet Not Connected</h3>
-              <p className="text-sm text-gray-500">Connect your Algorand wallet to continue</p>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-green-800">
+                  {getWalletIcon(account.provider)} {getWalletName(account.provider)}
+                </span>
+                <span className="text-xs text-green-600">
+                  {formatAddress(account.address)}
+                </span>
+              </div>
+              {showBalance && (
+                <div className="text-sm text-green-600">
+                  Balance: {formatBalance(balance)} ALGO
+                </div>
+              )}
             </div>
           </div>
-          <button
-            onClick={handleConnect}
-            disabled={loading}
-            className="btn-primary"
-          >
-            {loading ? (
-              <span className="flex items-center">
-                <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Connecting...
-              </span>
-            ) : (
-              <>
-                <Wallet size={16} className="mr-2" />
-                Connect Wallet
-              </>
-            )}
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => window.open(`https://testnet.algoexplorer.io/address/${account.address}`, '_blank')}
+              className="p-1 text-green-600 hover:text-green-800 transition-colors"
+              title="View on AlgoExplorer"
+            >
+              <ExternalLink size={16} />
+            </button>
+            <button
+              onClick={disconnectWallet}
+              className="p-1 text-green-600 hover:text-green-800 transition-colors"
+              title="Disconnect wallet"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="card p-4">
+    <div className={`bg-yellow-50 border border-yellow-200 rounded-lg p-4 ${className}`}>
       <div className="flex items-center justify-between">
-        <div className="flex items-center">
-          <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-full bg-success-500/10">
-            <CheckCircle className="h-5 w-5 text-success-500" />
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+            <AlertCircle className="w-5 h-5 text-yellow-600" />
           </div>
           <div>
-            <h3 className="font-medium">Wallet Connected</h3>
-            <p className="text-sm text-gray-500">
-              {formatAddress(account!)} • {balance.toFixed(2)} ALGO
-            </p>
-            {networkStatus && (
-              <p className="text-xs text-gray-400">
-                {networkStatus.connected ? (
-                  `${networkStatus.network} • Block ${networkStatus.lastRound}`
-                ) : (
-                  'Network disconnected'
-                )}
-              </p>
-            )}
+            <div className="text-sm font-medium text-yellow-800">
+              Wallet Not Connected
+            </div>
+            <div className="text-xs text-yellow-600">
+              Connect your Algorand wallet to continue
+            </div>
           </div>
         </div>
-        <button
-          onClick={handleDisconnect}
-          className="btn-outline"
-        >
-          <LogOut size={16} className="mr-2" />
-          Disconnect
-        </button>
+        <div className="flex items-center space-x-2">
+          {availableWallets.length > 0 ? (
+            availableWallets.map((wallet) => (
+              <button
+                key={wallet}
+                onClick={() => connectWallet(wallet as 'pera' | 'myalgo')}
+                disabled={loading}
+                className="px-3 py-1 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 flex items-center space-x-1"
+              >
+                <Wallet size={14} />
+                <span>{wallet === 'pera' ? 'Pera' : 'MyAlgo'}</span>
+              </button>
+            ))
+          ) : (
+            <div className="text-right">
+              <div className="text-sm text-yellow-800 font-medium">No Wallets Found</div>
+              <div className="text-xs text-yellow-600">
+                Install{' '}
+                <a
+                  href="https://perawallet.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-yellow-800"
+                >
+                  Pera Wallet
+                </a>{' '}
+                or{' '}
+                <a
+                  href="https://wallet.myalgo.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-yellow-800"
+                >
+                  MyAlgo Wallet
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+      
+      {availableWallets.length === 0 && (
+        <div className="mt-3 p-3 bg-yellow-100 rounded-lg">
+          <div className="text-sm text-yellow-800">
+            <strong>To use this application:</strong>
+          </div>
+          <div className="text-xs text-yellow-700 mt-1 space-y-1">
+            <div>1. Install Pera Wallet or MyAlgo Wallet</div>
+            <div>2. Create/import a TestNet account</div>
+            <div>3. Get TestNet ALGOs from the dispenser</div>
+            <div>4. Refresh this page and connect your wallet</div>
+          </div>
+          <div className="flex space-x-2 mt-2">
+            <a
+              href="https://perawallet.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+            >
+              Install Pera Wallet
+            </a>
+            <a
+              href="https://testnet.algoexplorer.io/dispenser"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
+            >
+              Get TestNet ALGOs
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

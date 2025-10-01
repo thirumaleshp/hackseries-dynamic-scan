@@ -4,21 +4,19 @@ import {
   Calendar, 
   MapPin, 
   Users, 
-  Clock, 
   Tag, 
-  Wallet,
   CreditCard,
   CheckCircle,
   AlertCircle,
-  Download,
-  Share2,
   QrCode,
   Ticket,
   Gift
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { dynaQRService, DynamicQREvent } from '../../services/algorand';
-import { nftService, NFTCreationParams } from '../../services/nft-service';
+import { dynaQRService, DynamicQREvent } from '../services/algorand';
+import { nftService, NFTCreationParams } from '../services/nft-service';
+import WalletConnection from '../components/WalletConnection';
+import { WalletAccount } from '../services/wallet-service';
 
 interface EventRegistrationData {
   eventId: string;
@@ -37,8 +35,9 @@ interface TicketTier {
   price: number;
   currency: 'ALGO' | 'USD';
   quantity: number;
-  available: number;
+  available?: number;
   benefits: string[];
+  transferable?: boolean;
 }
 
 const EventRegistration: React.FC = () => {
@@ -50,7 +49,7 @@ const EventRegistration: React.FC = () => {
   const [registering, setRegistering] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
-  const [connectedAccount, setConnectedAccount] = useState<any>(null);
+  const [connectedAccount, setConnectedAccount] = useState<WalletAccount | null>(null);
   
   const [formData, setFormData] = useState<EventRegistrationData>({
     eventId: eventId || '',
@@ -62,35 +61,7 @@ const EventRegistration: React.FC = () => {
     paymentMethod: 'free'
   });
 
-  const [ticketTiers] = useState<TicketTier[]>([
-    {
-      id: 'general',
-      name: 'General Admission',
-      description: 'Standard access to the event',
-      price: 10,
-      currency: 'ALGO',
-      quantity: 100,
-      available: 85
-    },
-    {
-      id: 'vip',
-      name: 'VIP Access',
-      description: 'Premium experience with exclusive benefits',
-      price: 25,
-      currency: 'ALGO',
-      quantity: 50,
-      available: 23
-    },
-    {
-      id: 'premium',
-      name: 'Premium Package',
-      description: 'Ultimate experience with all perks included',
-      price: 50,
-      currency: 'ALGO',
-      quantity: 25,
-      available: 12
-    }
-  ]);
+  const [ticketTiers, setTicketTiers] = useState<TicketTier[]>([]);
 
   // Load event data on component mount
   useEffect(() => {
@@ -108,6 +79,20 @@ const EventRegistration: React.FC = () => {
     }
   }, []);
 
+  const handleWalletConnect = (account: WalletAccount) => {
+    setWalletConnected(true);
+    setConnectedAccount(account);
+    setFormData(prev => ({
+      ...prev,
+      eventId: eventId || prev.eventId
+    }));
+  };
+
+  const handleWalletDisconnect = () => {
+    setWalletConnected(false);
+    setConnectedAccount(null);
+  };
+
   const loadEventData = async () => {
     try {
       setLoading(true);
@@ -115,14 +100,43 @@ const EventRegistration: React.FC = () => {
         const result = await dynaQRService.getEvent(eventId);
         if (result.success && result.data) {
           setEvent(result.data);
-          // Set default ticket tier and payment amount
-          const defaultTier = ticketTiers[0];
-          setFormData(prev => ({
-            ...prev,
-            ticketTier: defaultTier.id,
-            paymentAmount: defaultTier.price,
-            paymentMethod: defaultTier.price > 0 ? 'algo' : 'free'
-          }));
+        const metadataTiers = (result.data.metadata?.ticketTiers || []).map((tier, index) => ({
+          id: tier.id || `tier_${index}`,
+          name: tier.name,
+          description: tier.description || '',
+          price: tier.price,
+          currency: tier.currency,
+          quantity: tier.quantity ?? 0,
+          available: tier.quantity,
+          benefits: tier.benefits || [],
+          transferable: tier.transferable
+        }));
+
+        const fallbackTiers: TicketTier[] = metadataTiers.length > 0
+          ? metadataTiers
+          : [
+              {
+                id: 'general',
+                name: 'General Admission',
+                description: 'Standard access to the event',
+                price: 0,
+                currency: 'ALGO',
+                quantity: 0,
+                available: 0,
+                benefits: []
+              }
+            ];
+
+        setTicketTiers(fallbackTiers);
+
+        const defaultTier = fallbackTiers[0];
+        const defaultPrice = defaultTier && defaultTier.currency === 'ALGO' ? defaultTier.price : 0;
+        setFormData(prev => ({
+          ...prev,
+          ticketTier: defaultTier?.id || '',
+          paymentAmount: defaultPrice,
+          paymentMethod: defaultPrice > 0 ? 'algo' : 'free'
+        }));
         } else {
           toast.error('Event not found or not accessible');
           navigate('/events');
@@ -136,27 +150,15 @@ const EventRegistration: React.FC = () => {
     }
   };
 
-  const connectWallet = async () => {
-    try {
-      const account = await dynaQRService.connectWallet('pera');
-      if (account) {
-        setWalletConnected(true);
-        setConnectedAccount(account);
-        toast.success('🔗 Wallet connected successfully!');
-      }
-    } catch (error) {
-      toast.error('❌ Failed to connect wallet');
-    }
-  };
-
   const handleTicketTierChange = (tierId: string) => {
     const selectedTier = ticketTiers.find(tier => tier.id === tierId);
     if (selectedTier) {
+      const price = selectedTier.currency === 'ALGO' ? selectedTier.price : 0;
       setFormData(prev => ({
         ...prev,
         ticketTier: tierId,
-        paymentAmount: selectedTier.price,
-        paymentMethod: selectedTier.price > 0 ? 'algo' : 'free'
+        paymentAmount: price,
+        paymentMethod: price > 0 ? 'algo' : 'free'
       }));
     }
   };
@@ -171,7 +173,7 @@ const EventRegistration: React.FC = () => {
   const handleRegistration = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!walletConnected) {
+    if (!walletConnected || !connectedAccount) {
       toast.error('Please connect your wallet first');
       return;
     }
@@ -181,13 +183,17 @@ const EventRegistration: React.FC = () => {
       return;
     }
 
-    if (formData.paymentMethod === 'algo' && formData.paymentAmount > 0) {
+    const selectedTier = ticketTiers.find(tier => tier.id === formData.ticketTier);
+    const tierIndex = ticketTiers.findIndex(tier => tier.id === formData.ticketTier);
+    const requiresAlgo = selectedTier?.currency === 'ALGO';
+    const paymentAmountMicro = requiresAlgo ? Math.round((selectedTier?.price ?? 0) * 1_000_000) : 0;
+
+    if (requiresAlgo && paymentAmountMicro > 0) {
       // Check if user has sufficient ALGO balance
       const balance = await dynaQRService.getAccountBalance(connectedAccount.address);
-      const requiredBalance = formData.paymentAmount * 1000000; // Convert to microALGOs
       
-      if (balance < requiredBalance) {
-        toast.error(`Insufficient ALGO balance. Required: ${formData.paymentAmount} ALGO, Available: ${balance / 1000000} ALGO`);
+      if (balance < paymentAmountMicro) {
+        toast.error(`Insufficient ALGO balance. Required: ${(paymentAmountMicro / 1_000_000).toFixed(4)} ALGO, Available: ${(balance / 1_000_000).toFixed(4)} ALGO`);
         return;
       }
     }
@@ -200,9 +206,11 @@ const EventRegistration: React.FC = () => {
         eventId: formData.eventId,
         attendeeAddress: connectedAccount.address,
         ticketTier: formData.ticketTier,
-        paymentAmount: formData.paymentAmount * 1000000, // Convert to microALGOs
+        ticketTierIndex: tierIndex >= 0 ? tierIndex : undefined,
+        paymentAmountMicroAlgos: paymentAmountMicro,
         attendeeName: formData.attendeeName,
-        attendeeEmail: formData.attendeeEmail
+        attendeeEmail: formData.attendeeEmail,
+        attendeePhone: formData.attendeePhone
       });
 
       if (registrationResult.success) {
@@ -221,7 +229,7 @@ const EventRegistration: React.FC = () => {
   };
 
   const handleAttendanceConfirmation = async () => {
-    if (!event || !walletConnected) return;
+    if (!event || !walletConnected || !connectedAccount) return;
 
     try {
       setRegistering(true);
@@ -442,40 +450,13 @@ const EventRegistration: React.FC = () => {
           {/* Form */}
           <div className="bg-white rounded-lg shadow-md border p-6">
             <h2 className="text-2xl font-semibold text-gray-800 mb-6">Register for Event</h2>
-            
-            {!walletConnected && (
-              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">🔐 Connect Wallet Required</h3>
-                    <p className="text-yellow-700">
-                      Connect your Algorand wallet to register for this event and receive your NFT.
-                    </p>
-                  </div>
-                  <button
-                    onClick={connectWallet}
-                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
-                  >
-                    <Wallet size={20} className="mr-2" />
-                    Connect Wallet
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {walletConnected && connectedAccount && (
-              <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-green-800 font-semibold">✅ Wallet Connected</span>
-                    <p className="text-sm text-green-600">{connectedAccount.address}</p>
-                  </div>
-                  <span className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">
-                    Ready to Register
-                  </span>
-                </div>
-              </div>
-            )}
+            <div className="mb-6">
+              <WalletConnection
+                onConnect={handleWalletConnect}
+                onDisconnect={handleWalletDisconnect}
+                showBalance
+              />
+            </div>
 
             <form onSubmit={handleRegistration} className="space-y-6">
               <div>

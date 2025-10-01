@@ -1,7 +1,7 @@
 {
-  "name": "algorand-qr-verification",
+  "name": "algorand-event-management",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@perawallet/connect": "^1.4.2",
+    "@randlabs/myalgo-connect": "^1.0.0",
     "@types/qrcode": "^1.5.5",
     "algosdk": "^3.3.1",
     "html5-qrcode": "^2.3.8",

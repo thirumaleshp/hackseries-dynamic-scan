@@ -1,13 +1,15 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
-import { dynaQRService, DynamicQREvent } from './services/algorand';
+import { dynaQRService, DynamicQREvent, CreateEventPayload } from './services/algorand';
 import { dynaQRResolver, ResolverResponse } from './services/resolver';
 import QRCode from 'qrcode';
 import Resolver from './pages/Resolver';
 import CreateEvent from './pages/CreateEvent';
 import Events from './pages/Events';
+import EventRegistration from './pages/EventRegistration';
 import DebugInfo from './components/DebugInfo';
+import ManageEvent from './pages/ManageEvent';
 import './index.css'; // Import Tailwind CSS
 
 // Temporarily comment out the problematic import
@@ -92,14 +94,17 @@ function DynamicQRGenerator() {
       console.log('Generated resolver URL:', resolverUrl);
       
       // Create event on Algorand blockchain
-      const eventData: Omit<DynamicQREvent, 'createdAt' | 'owner' | 'scanCount' | 'active' | 'transactionId' | 'blockHeight'> = {
+      const eventData: CreateEventPayload = {
         eventId,
         eventName: formData.eventName,
         currentUrl: formData.initialUrl,
         description: formData.description,
         accessType: formData.accessType as 'public' | 'nft-gated' | 'time-based',
         expiryDate: formData.expiryDate,
-        resolverUrl
+        resolverUrl,
+        ticketPriceAlgos: 0,
+        maxCapacity: 0,
+        ticketTiers: []
       };
 
       const result = await dynaQRService.createEvent(eventData);
@@ -1164,6 +1169,9 @@ function App() {
             <Route path="/" element={<TestDashboard />} />
             <Route path="/create-event" element={<CreateEvent />} />
             <Route path="/events" element={<Events />} />
+            <Route path="/events/:eventId" element={<EventRegistration />} />
+            <Route path="/events/:eventId/register" element={<EventRegistration />} />
+            <Route path="/events/:eventId/manage" element={<ManageEvent />} />
             <Route path="/generate" element={<DynamicQRGenerator />} />
             <Route path="/scan" element={<TestScan />} />
             <Route path="/history" element={<TestHistory />} />

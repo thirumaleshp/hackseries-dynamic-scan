@@ -1,5 +1,8 @@
 import React from 'react';
-import { Calendar, MapPin, Users, Clock, Tag, Settings } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Settings } from 'lucide-react';
+import { toast } from 'sonner';
+import { dynaQRService, CreateEventPayload, TicketTierMetadata } from '../services/algorand';
+import WalletConnection from '../components/WalletConnection';
 
 interface EventFormData {
   title: string;
@@ -72,6 +75,7 @@ const timezones = [
 
 function CreateEvent() {
   const [currentStep, setCurrentStep] = React.useState(1);
+  const [walletConnected, setWalletConnected] = React.useState(false);
   const [formData, setFormData] = React.useState<EventFormData>({
     title: '',
     description: '',
@@ -642,19 +646,119 @@ function CreateEvent() {
 
   const handleSubmit = async () => {
     try {
+      if (!walletConnected) {
+        toast.error('Please connect your wallet first');
+        return;
+      }
+
       console.log('Creating event with data:', formData);
-      // TODO: Integrate with Algorand smart contract
-      // TODO: Create event on blockchain
-      // TODO: Generate NFT tickets
-      alert('Event creation will be implemented with Algorand integration!');
+
+      const eventId = `${formData.title.replace(/\s+/g, '-').toUpperCase().substring(0, 10)}-${Date.now().toString(36)}`;
+      const resolverUrl = `https://hackseries-dynamic-scan.vercel.app/resolve?event=${eventId}`;
+      const expiryDateISO = formData.endDate
+        ? `${formData.endDate}T${formData.endTime || '23:59'}:00`
+        : undefined;
+
+      const ticketTiersMetadata: TicketTierMetadata[] = formData.ticketTiers.map((tier) => ({
+        id: tier.id,
+        name: tier.name,
+        description: tier.description,
+        price: tier.price,
+        currency: tier.currency,
+        quantity: tier.quantity,
+        benefits: tier.benefits,
+        transferable: tier.transferable
+      }));
+
+      const primaryTier = ticketTiersMetadata[0];
+      const ticketPriceAlgos = primaryTier && primaryTier.currency === 'ALGO' ? primaryTier.price : 0;
+
+      const eventData: CreateEventPayload = {
+        eventId,
+        eventName: formData.title,
+        currentUrl: `https://example.com/event/${eventId}`,
+        description: formData.description,
+        accessType: 'public',
+        expiryDate: expiryDateISO,
+        resolverUrl,
+        ticketPriceAlgos,
+        maxCapacity: formData.capacity,
+        visibility: formData.visibility,
+        requiresApproval: formData.requiresApproval,
+        tags: formData.tags,
+        organizer: formData.organizer,
+        ticketTiers: ticketTiersMetadata
+      };
+
+      const result = await dynaQRService.createEvent(eventData);
+      
+      if (result.success) {
+        toast.success('🎉 Event created successfully on Algorand blockchain!');
+        // Reset form or redirect
+        setFormData({
+          title: '',
+          description: '',
+          category: '',
+          startDate: '',
+          endDate: '',
+          startTime: '',
+          endTime: '',
+          timezone: 'UTC',
+          venue: {
+            name: '',
+            address: '',
+            city: '',
+            state: '',
+            country: ''
+          },
+          capacity: 100,
+          ticketTiers: [{
+            id: 'general',
+            name: 'General Admission',
+            description: 'Standard access to the event',
+            price: 10,
+            currency: 'ALGO',
+            quantity: 100,
+            salesStart: '',
+            salesEnd: '',
+            transferable: true,
+            benefits: ['Event access', 'Welcome kit']
+          }],
+          visibility: 'public',
+          requiresApproval: false,
+          tags: [],
+          organizer: {
+            name: '',
+            email: '',
+            phone: ''
+          }
+        });
+        setCurrentStep(1);
+      } else {
+        throw new Error(result.error || 'Failed to create event');
+      }
     } catch (error) {
       console.error('Error creating event:', error);
+      toast.error(`Failed to create event: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
+        {/* Wallet Connection */}
+        <div className="mb-8">
+          <WalletConnection
+            onConnect={() => {
+              setWalletConnected(true);
+            }}
+            onDisconnect={() => {
+              setWalletConnected(false);
+            }}
+            showBalance={true}
+          />
+        </div>
+
         {/* Progress Steps */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
